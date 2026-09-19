@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Platform } from 'react-native';
 import { api } from '../src/api/client';
 import { authStore } from '../src/state/authStore';
 
@@ -42,31 +42,35 @@ export function CompanySelector({ onCompanySelected }: CompanySelectorProps) {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.label}>Select Company:</Text>
+      <Text style={styles.label}>Select Organization:</Text>
       <ScrollView 
         horizontal 
         showsHorizontalScrollIndicator={false}
-        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContainer}
       >
-        {companies.map((company) => (
-          <TouchableOpacity
-            key={company.id}
-            style={[
-              styles.companyButton,
-              selectedCompanyId === company.id && styles.companyButtonActive,
-            ]}
-            onPress={() => handleSelectCompany(company.id)}
-          >
-            <Text
+        {companies.map((company) => {
+          const isSelected = selectedCompanyId === company.id;
+          return (
+            <TouchableOpacity
+              key={company.id}
               style={[
-                styles.companyText,
-                selectedCompanyId === company.id && styles.companyTextActive,
+                styles.companyButton,
+                isSelected && styles.companyButtonActive,
               ]}
+              onPress={() => handleSelectCompany(company.id)}
+              activeOpacity={0.7}
             >
-              {company.name}
-            </Text>
-          </TouchableOpacity>
-        ))}
+              <Text
+                style={[
+                  styles.companyText,
+                  isSelected && styles.companyTextActive,
+                ]}
+              >
+                {company.name}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
       </ScrollView>
     </View>
   );
@@ -74,37 +78,43 @@ export function CompanySelector({ onCompanySelected }: CompanySelectorProps) {
 
 const styles = StyleSheet.create({
   container: {
-    padding: 16,
-    backgroundColor: '#f5f5f5',
+    marginTop: 4,
+    marginBottom: 4,
   },
   label: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 8,
-    color: '#333',
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#64748b',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 6,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
   },
-  scrollView: {
-    marginBottom: 8,
+  scrollContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   companyButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    marginRight: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
     borderRadius: 8,
-    backgroundColor: '#e0e0e0',
+    backgroundColor: '#f1f5f9',
     borderWidth: 1,
-    borderColor: '#ccc',
+    borderColor: '#e2e8f0',
   },
   companyButtonActive: {
-    backgroundColor: '#007AFF',
-    borderColor: '#007AFF',
+    backgroundColor: '#2563eb',
+    borderColor: '#1d4ed8',
   },
   companyText: {
-    fontSize: 12,
-    color: '#333',
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#475569',
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
   },
   companyTextActive: {
-    color: '#fff',
-    fontWeight: '600',
+    color: '#ffffff',
+    fontWeight: '700',
   },
 });

@@ -2,15 +2,16 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  SafeAreaView,
-  ScrollView,
-  Text,
-  View,
-  StyleSheet,
-  TouchableOpacity,
-  Pressable,
   Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  useWindowDimensions,
+  View,
 } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 
 import { api } from '../../src/api/client';
@@ -21,6 +22,12 @@ import { StatusBadge } from '../../components/ui/status-badge';
 import { ExportModal } from '../../components/export-modal';
 
 export default function DashboardScreen() {
+  const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const isDesktop = width >= 960;
+  const isTablet = width >= 640 && width < 960;
+  const isMobile = width < 640;
+
   const router = useRouter();
   const signOut = authStore((s) => s.signOut);
   const user = authStore((s) => s.user);
@@ -138,12 +145,12 @@ export default function DashboardScreen() {
   const selectedDevice = devices.find((d) => d.id === selectedDeviceId);
 
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+      <ScrollView contentContainerStyle={[styles.scrollContent, { maxWidth: 1080, width: '100%', alignSelf: 'center', paddingBottom: Math.max(insets.bottom, 24) + 24 }]}>
         {/* Header Section */}
         <View style={styles.header}>
           <View style={styles.headerTop}>
-            <View>
+            <View style={{ flex: 1, marginRight: 10 }}>
               <Text style={styles.platformTitle}>IoT Water Quality Platform</Text>
               <Text style={styles.userSubtitle}>
                 {user?.name} · <Text style={styles.roleTag}>{user?.role}</Text>
@@ -156,6 +163,7 @@ export default function DashboardScreen() {
                 signOut();
                 router.replace('/login');
               }}
+              activeOpacity={0.7}
             >
               <Text style={styles.logoutBtnText}>Logout</Text>
             </TouchableOpacity>
@@ -164,35 +172,49 @@ export default function DashboardScreen() {
           {isSuperAdmin && <CompanySelector />}
 
           {selectedCompany && (
-            <Text style={styles.activeCompanyText}>
-              Organization: <Text style={{ fontWeight: '700' }}>{selectedCompany.name}</Text>
-            </Text>
+            <View style={styles.activeCompanyBadge}>
+              <Text style={styles.activeCompanyText}>
+                Organization: <Text style={{ fontWeight: '700', color: '#0f172a' }}>{selectedCompany.name}</Text>
+              </Text>
+            </View>
           )}
         </View>
 
         {/* High-Level KPI Cards */}
-        <View style={styles.kpiRow}>
-          <View style={[styles.kpiCard, styles.kpiTotal]}>
-            <Text style={styles.kpiLabel}>Total Devices</Text>
+        <View style={styles.kpiGrid}>
+          <View style={[styles.kpiCard, isMobile ? styles.kpiCardMobile : styles.kpiCardDesktop, styles.kpiTotal]}>
+            <View style={styles.kpiTopRow}>
+              <Text style={styles.kpiIcon}>📡</Text>
+              <Text style={styles.kpiLabel}>Total Devices</Text>
+            </View>
             <Text style={styles.kpiValue}>{summaryStats?.totalDevices ?? devices.length}</Text>
           </View>
 
-          <View style={[styles.kpiCard, styles.kpiOnline]}>
-            <Text style={styles.kpiLabel}>Online</Text>
+          <View style={[styles.kpiCard, isMobile ? styles.kpiCardMobile : styles.kpiCardDesktop, styles.kpiOnline]}>
+            <View style={styles.kpiTopRow}>
+              <Text style={styles.kpiIcon}>🟢</Text>
+              <Text style={styles.kpiLabel}>Online</Text>
+            </View>
             <Text style={[styles.kpiValue, { color: '#16a34a' }]}>
               {summaryStats?.onlineDevices ?? 0}
             </Text>
           </View>
 
-          <View style={[styles.kpiCard, styles.kpiWarning]}>
-            <Text style={styles.kpiLabel}>Warning</Text>
+          <View style={[styles.kpiCard, isMobile ? styles.kpiCardMobile : styles.kpiCardDesktop, styles.kpiWarning]}>
+            <View style={styles.kpiTopRow}>
+              <Text style={styles.kpiIcon}>⚠️</Text>
+              <Text style={styles.kpiLabel}>Warning</Text>
+            </View>
             <Text style={[styles.kpiValue, { color: '#d97706' }]}>
               {summaryStats?.warningDevices ?? 0}
             </Text>
           </View>
 
-          <View style={[styles.kpiCard, styles.kpiOffline]}>
-            <Text style={styles.kpiLabel}>Offline</Text>
+          <View style={[styles.kpiCard, isMobile ? styles.kpiCardMobile : styles.kpiCardDesktop, styles.kpiOffline]}>
+            <View style={styles.kpiTopRow}>
+              <Text style={styles.kpiIcon}>🔴</Text>
+              <Text style={styles.kpiLabel}>Offline</Text>
+            </View>
             <Text style={[styles.kpiValue, { color: '#dc2626' }]}>
               {summaryStats?.offlineDevices ?? 0}
             </Text>
@@ -200,10 +222,10 @@ export default function DashboardScreen() {
         </View>
 
         {/* Action Controls */}
-        <View style={styles.actionsBar}>
+        <View style={[styles.actionsBar, isMobile && styles.actionsBarMobile]}>
           <Text style={styles.sectionHeaderTitle}>Connected Devices ({devices.length})</Text>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            <TouchableOpacity style={styles.secondaryBtn} onPress={loadDashboardData} disabled={loading}>
+          <View style={styles.actionsBtnRow}>
+            <TouchableOpacity style={styles.secondaryBtn} onPress={loadDashboardData} disabled={loading} activeOpacity={0.7}>
               <Text style={styles.secondaryBtnText}>{loading ? 'Refreshing...' : '🔄 Refresh'}</Text>
             </TouchableOpacity>
 
@@ -211,6 +233,7 @@ export default function DashboardScreen() {
               <TouchableOpacity
                 style={styles.primaryBtn}
                 onPress={() => router.push('/(tabs)/admin')}
+                activeOpacity={0.7}
               >
                 <Text style={styles.primaryBtnText}>⚙️ Manage in Admin ➔</Text>
               </TouchableOpacity>
@@ -254,18 +277,20 @@ export default function DashboardScreen() {
                   style={styles.deviceCardTop}
                   onPress={() => setSelectedDeviceId((prev) => (prev === device.id ? null : device.id))}
                 >
-                  <View style={{ flex: 1 }}>
+                  <View style={{ flex: 1, marginRight: 8 }}>
                     <View style={styles.titleWithBadge}>
                       <Text style={styles.deviceCardTitle}>{device.name || device.deviceId}</Text>
                       <StatusBadge status={status} size="small" />
                     </View>
-                    <Text style={styles.deviceMeta}>
+                    <Text style={styles.deviceMeta} numberOfLines={2}>
                       ID: {device.deviceId} · Channel: {device.channelId}
                       {device.location ? ` · 📍 ${device.location}` : ''}
                     </Text>
                   </View>
 
-                  <Text style={styles.expandChevron}>{isSelected ? '▲ Less' : '▼ More'}</Text>
+                  <View style={styles.expandChevronBadge}>
+                    <Text style={styles.expandChevronText}>{isSelected ? '▲ Less' : '▼ Details'}</Text>
+                  </View>
                 </Pressable>
 
                 {/* Telemetry Parameter Grid */}
@@ -302,22 +327,23 @@ export default function DashboardScreen() {
                   )}
                 </View>
 
-                {/* Last Communication Time */}
-                <View style={styles.cardFooter}>
+                {/* Last Communication Time & Actions */}
+                <View style={[styles.cardFooter, isMobile && styles.cardFooterMobile]}>
                   <Text style={styles.lastUpdatedText}>
-                    Last Received:{' '}
+                    🕒 Last Received:{' '}
                     {live?.lastDataReceived || device.lastDataReceived
                       ? new Date(live?.lastDataReceived || device.lastDataReceived!).toLocaleString()
                       : 'Never'}
                   </Text>
 
                   {/* Actions Row */}
-                  <View style={styles.cardBtnRow}>
+                  <View style={[styles.cardBtnRow, isMobile && styles.cardBtnRowMobile]}>
                     {/* CSV Download - Visible for SuperAdmin & Company; Hidden for Managers */}
                     {canDownload && (
                       <TouchableOpacity
                         style={styles.exportBtn}
                         onPress={() => setExportModalDevice({ id: device.id, name: device.name || device.deviceId })}
+                        activeOpacity={0.7}
                       >
                         <Text style={styles.exportBtnText}>📥 Export CSV</Text>
                       </TouchableOpacity>
@@ -327,8 +353,9 @@ export default function DashboardScreen() {
                       <TouchableOpacity
                         style={styles.deleteBtn}
                         onPress={() => handleDeleteDevice(device.id, device.name || device.deviceId)}
+                        activeOpacity={0.7}
                       >
-                        <Text style={styles.deleteBtnText}>Delete</Text>
+                        <Text style={styles.deleteBtnText}>🗑️ Delete</Text>
                       </TouchableOpacity>
                     )}
                   </View>
@@ -421,28 +448,46 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
   },
+  activeCompanyBadge: {
+    backgroundColor: '#f1f5f9',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    marginTop: 4,
+  },
   activeCompanyText: {
     fontSize: 13,
-    color: '#334155',
-    backgroundColor: '#f1f5f9',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 6,
+    color: '#475569',
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
   },
-  kpiRow: {
+  kpiGrid: {
     flexDirection: 'row',
-    gap: 10,
     flexWrap: 'wrap',
+    gap: 10,
+    justifyContent: 'space-between',
   },
   kpiCard: {
-    flex: 1,
-    minWidth: 75,
     backgroundColor: '#fff',
     borderRadius: 12,
     borderWidth: 1,
     borderColor: '#e2e8f0',
     padding: 12,
-    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.03,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
+  },
+  kpiCardMobile: {
+    width: '48%',
+    flexGrow: 1,
+    minWidth: 135,
+  },
+  kpiCardDesktop: {
+    flex: 1,
+    minWidth: 160,
   },
   kpiTotal: {
     borderLeftWidth: 4,
@@ -450,61 +495,88 @@ const styles = StyleSheet.create({
   },
   kpiOnline: {
     borderLeftWidth: 4,
-    borderLeftColor: '#22c55e',
+    borderLeftColor: '#16a34a',
   },
   kpiWarning: {
     borderLeftWidth: 4,
-    borderLeftColor: '#f59e0b',
+    borderLeftColor: '#d97706',
   },
   kpiOffline: {
     borderLeftWidth: 4,
-    borderLeftColor: '#ef4444',
+    borderLeftColor: '#dc2626',
+  },
+  kpiTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 6,
+  },
+  kpiIcon: {
+    fontSize: 14,
   },
   kpiLabel: {
     fontSize: 11,
-    fontWeight: '600',
+    fontWeight: '700',
     color: '#64748b',
-    marginBottom: 4,
     textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
   },
   kpiValue: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: '800',
     color: '#0f172a',
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
   },
   actionsBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    gap: 12,
+    marginTop: 4,
+  },
+  actionsBarMobile: {
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  actionsBtnRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
   },
   sectionHeaderTitle: {
     fontSize: 18,
     fontWeight: '700',
     color: '#0f172a',
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
   },
   primaryBtn: {
     backgroundColor: '#2563eb',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
     borderRadius: 8,
   },
   primaryBtnText: {
     color: '#fff',
     fontSize: 12,
     fontWeight: '700',
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
   },
   secondaryBtn: {
     backgroundColor: '#fff',
     borderWidth: 1,
     borderColor: '#cbd5e1',
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 9,
     borderRadius: 8,
   },
   secondaryBtnText: {
     color: '#334155',
     fontSize: 12,
     fontWeight: '600',
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
   },
   registerFormCard: {
     backgroundColor: '#fff',
@@ -603,26 +675,39 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    gap: 10,
   },
   titleWithBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    flexWrap: 'wrap',
   },
   deviceCardTitle: {
     fontSize: 16,
     fontWeight: '700',
     color: '#0f172a',
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
   },
   deviceMeta: {
     fontSize: 12,
     color: '#64748b',
-    marginTop: 2,
+    marginTop: 3,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
   },
-  expandChevron: {
-    fontSize: 12,
-    color: '#2563eb',
-    fontWeight: '600',
+  expandChevronBadge: {
+    backgroundColor: '#eff6ff',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+  },
+  expandChevronText: {
+    fontSize: 11,
+    color: '#1d4ed8',
+    fontWeight: '700',
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
   },
   paramGrid: {
     flexDirection: 'row',
@@ -631,7 +716,7 @@ const styles = StyleSheet.create({
   },
   paramBox: {
     flex: 1,
-    minWidth: 90,
+    minWidth: 95,
     backgroundColor: '#f8fafc',
     borderRadius: 8,
     borderWidth: 1,
@@ -646,13 +731,17 @@ const styles = StyleSheet.create({
   paramLabel: {
     fontSize: 11,
     color: '#64748b',
-    fontWeight: '600',
+    fontWeight: '700',
     marginBottom: 2,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
   },
   paramValue: {
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '800',
     color: '#0f172a',
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
   },
   paramValueAlert: {
     color: '#e11d48',
@@ -660,7 +749,9 @@ const styles = StyleSheet.create({
   thresholdSub: {
     fontSize: 9,
     color: '#94a3b8',
-    marginTop: 2,
+    marginTop: 3,
+    fontWeight: '500',
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
   },
   noDataBox: {
     flex: 1,
@@ -671,6 +762,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#94a3b8',
     fontStyle: 'italic',
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
   },
   cardFooter: {
     flexDirection: 'row',
@@ -678,54 +770,72 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderTopWidth: 1,
     borderTopColor: '#f1f5f9',
-    paddingTop: 8,
+    paddingTop: 10,
+    gap: 8,
+  },
+  cardFooterMobile: {
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    gap: 10,
   },
   lastUpdatedText: {
     fontSize: 11,
-    color: '#94a3b8',
+    color: '#64748b',
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
   },
   cardBtnRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
+  },
+  cardBtnRowMobile: {
+    alignSelf: 'flex-start',
+    flexWrap: 'wrap',
   },
   exportBtn: {
     backgroundColor: '#eff6ff',
     borderWidth: 1,
     borderColor: '#bfdbfe',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     borderRadius: 6,
   },
   exportBtnText: {
     fontSize: 11,
     color: '#1d4ed8',
     fontWeight: '700',
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
   },
   deleteBtn: {
     backgroundColor: '#fee2e2',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: '#fca5a5',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     borderRadius: 6,
   },
   deleteBtnText: {
     fontSize: 11,
     color: '#dc2626',
-    fontWeight: '600',
+    fontWeight: '700',
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
   },
   expandedDetails: {
     borderTopWidth: 1,
     borderTopColor: '#e2e8f0',
     paddingTop: 10,
-    gap: 4,
+    gap: 6,
   },
   expandedHeading: {
     fontSize: 12,
     fontWeight: '700',
     color: '#334155',
     marginBottom: 4,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
   },
   detailLine: {
     fontSize: 12,
     color: '#475569',
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
   },
 });
