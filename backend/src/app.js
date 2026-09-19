@@ -38,7 +38,17 @@ function createApp() {
     });
   });
 
-  app.get('/health', (req, res) => {
+  app.get('/health', async (req, res) => {
+    if (!mongoState.connected && env.MONGO_URI) {
+      try {
+        const { connectToMongo } = require('./utils/mongo');
+        await connectToMongo(env.MONGO_URI);
+        mongoState.connected = true;
+      } catch (err) {
+        mongoState.lastError = err;
+      }
+    }
+
     res.json({
       ok: true,
       service: 'water-quality-api',
