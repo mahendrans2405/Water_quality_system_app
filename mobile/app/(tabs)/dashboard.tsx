@@ -19,7 +19,6 @@ import type { DeviceSummary, DeviceLiveResponse, IotSummaryStats } from '../../s
 import { authStore } from '../../src/state/authStore';
 import { CompanySelector } from '../../components/company-selector';
 import { StatusBadge } from '../../components/ui/status-badge';
-import { ExportModal } from '../../components/export-modal';
 
 export default function DashboardScreen() {
   const insets = useSafeAreaInsets();
@@ -37,7 +36,6 @@ export default function DashboardScreen() {
   const isCompanyUser = user?.role === 'Company';
   const isManager = user?.role === 'Manager' || user?.role === 'Manager1' || user?.role === 'Manager2';
   const canManageDevices = authStore((s) => s.hasPermission('devices.manage'));
-  const canDownload = authStore((s) => s.canDownload());
 
   const [summaryStats, setSummaryStats] = useState<IotSummaryStats | null>(null);
   const [devices, setDevices] = useState<DeviceSummary[]>([]);
@@ -47,7 +45,6 @@ export default function DashboardScreen() {
   const [error, setError] = useState<string | null>(null);
 
   const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null);
-  const [exportModalDevice, setExportModalDevice] = useState<{ id: string; name: string } | null>(null);
 
   const targetCompanyId = isSuperAdmin ? selectedCompanyId : user?.companyId || null;
 
@@ -338,17 +335,6 @@ export default function DashboardScreen() {
 
                   {/* Actions Row */}
                   <View style={[styles.cardBtnRow, isMobile && styles.cardBtnRowMobile]}>
-                    {/* CSV Download - Visible for SuperAdmin & Company; Hidden for Managers */}
-                    {canDownload && (
-                      <TouchableOpacity
-                        style={styles.exportBtn}
-                        onPress={() => setExportModalDevice({ id: device.id, name: device.name || device.deviceId })}
-                        activeOpacity={0.7}
-                      >
-                        <Text style={styles.exportBtnText}>📥 Export CSV</Text>
-                      </TouchableOpacity>
-                    )}
-
                     {canManageDevices && (
                       <TouchableOpacity
                         style={styles.deleteBtn}
@@ -386,16 +372,6 @@ export default function DashboardScreen() {
           })
         )}
       </ScrollView>
-
-      {/* Export CSV Modal */}
-      {exportModalDevice && (
-        <ExportModal
-          visible={Boolean(exportModalDevice)}
-          onClose={() => setExportModalDevice(null)}
-          deviceId={exportModalDevice.id}
-          deviceName={exportModalDevice.name}
-        />
-      )}
     </SafeAreaView>
   );
 }

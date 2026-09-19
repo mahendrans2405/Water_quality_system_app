@@ -483,8 +483,7 @@ export default function ChartsScreen() {
                     setSelectedIndex(null);
                   }}
                 >
-                  <Text style={styles.paramIcon}>{meta.icon}</Text>
-                  <View>
+                  <View style={{ alignItems: 'center' }}>
                     <Text style={[styles.paramTabText, isSelected && styles.paramTabTextActive]}>
                       {m.parameterName}
                     </Text>
@@ -852,19 +851,17 @@ const styles = StyleSheet.create({
   paramTab: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 7,
+    justifyContent: 'center',
     backgroundColor: '#f8fafc',
     borderWidth: 1.5,
     borderColor: '#e2e8f0',
     borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-  },
-  paramIcon: {
-    fontSize: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    minHeight: 38,
   },
   paramTabText: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '700',
     color: '#334155',
   },
