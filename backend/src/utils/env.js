@@ -19,8 +19,12 @@ const envSchema = z.object({
 
 const parsed = envSchema.safeParse(process.env);
 if (!parsed.success) {
+  const missing = JSON.stringify(parsed.error.flatten().fieldErrors, null, 2);
   // eslint-disable-next-line no-console
-  console.error('Invalid environment variables:', parsed.error.flatten().fieldErrors);
+  console.error('FATAL: Missing or invalid environment variables:\n', missing);
+  if (process.env.VERCEL) {
+    throw new Error(`Missing required environment variables in Vercel settings:\n${missing}`);
+  }
   process.exit(1);
 }
 

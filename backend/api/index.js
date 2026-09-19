@@ -1,29 +1,32 @@
 const mongoose = require('mongoose');
 const { createApp } = require('../src/app');
 const { env } = require('../src/utils/env');
-const { connectToMongo } = require('../src/utils/mongo');
+const { connectToMongo, mongoState } = require('../src/utils/mongo');
 const { ensureRolesSeeded } = require('../src/utils/seed');
 
-let appInstance = null;
-let seedDone = false;
+const app = createApp();
 
-module.exports = async (req, res) => {
-  // Reuse existing Mongoose connection across serverless invocations
-  if (mongoose.connection.readyState !== 1) {
+let seedAttempted = false;
+
+// Serverless middleware: ensure MongoDB connection is ready before handling requests
+app.use(async (req, res, next) => {
+  if (!mongoState.connected || mongoose.connection.readyState !== 1) {
     try {
       await connectToMongo(env.MONGO_URI);
-      if (!seedDone) {
-        await ensureRolesSeeded();
-        seedDone = true;
+      mongoState.connected = true;
+      if (!seedAttempted) {
+        seedAttempted = true;
+        ensureRolesSeeded().catch((err) => console.warn('Role seed warning:', err?.message || err));
       }
     } catch (err) {
-      console.error('Database connection error in serverless handler:', err);
+      console.error('Mongo serverless connection error:', err?.message || err);
+      return res.status(503).json({
+        ok: false,
+        error: { code: 'DB_UNAVAILABLE', message: 'Database connection failed: ' + (err?.message || err) },
+      });
     }
   }
+  next();
+});
 
-  if (!appInstance) {
-    appInstance = createApp();
-  }
-
-  return appInstance(req, res);
-};
+module.exports = app;
