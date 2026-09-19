@@ -21,6 +21,7 @@ const MAPPING = {
   'list.bullet': 'format-list-bulleted',
   'chart.xyaxis.line': 'show-chart',
   'person.3.fill': 'people',
+  'gearshape.fill': 'settings',
 } as IconMapping;
 
 /**

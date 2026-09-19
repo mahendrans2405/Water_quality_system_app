@@ -40,7 +40,7 @@ export default function AdminScreen() {
   const canAdmin = isSuperAdmin || isCompanyUser;
 
   const [activeTab, setActiveTab] = useState<'companies' | 'devices' | 'users' | 'audit' | 'config'>(
-    isSuperAdmin ? 'companies' : 'devices'
+    isSuperAdmin ? 'companies' : canAdmin ? 'devices' : 'config'
   );
 
   const [users, setUsers] = useState<any[]>([]);
@@ -319,50 +319,27 @@ export default function AdminScreen() {
     }
   }
 
-  if (!canAdmin) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.accessDeniedCard}>
-          <Text style={styles.accessDeniedTitle}>Access Denied</Text>
-          <Text style={styles.accessDeniedText}>
-            You do not have administrative privileges. Contact your organization administrator.
-          </Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <ScrollView contentContainerStyle={[styles.scrollContent, { maxWidth: 1080, width: '100%', alignSelf: 'center', paddingBottom: Math.max(insets.bottom, 24) + 24 }]}>
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.headerTop}>
-            <View style={{ flex: 1, marginRight: 8 }}>
-              <Text style={styles.title}>Administration Console</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.title}>{canAdmin ? 'Administration Console' : 'Settings'}</Text>
               <Text style={styles.userInfo}>
                 Logged in as: {user?.name} ({user?.role})
               </Text>
             </View>
-
-            <TouchableOpacity
-              style={styles.logoutBtn}
-              onPress={() => {
-                signOut();
-                router.replace('/login');
-              }}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.logoutBtnText}>Logout</Text>
-            </TouchableOpacity>
           </View>
 
           {isSuperAdmin && <CompanySelector />}
         </View>
 
-        {/* Section Navigation Tabs */}
-        <View style={styles.navTabsWrapper}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.navTabs}>
+        {/* Section Navigation Tabs (Only for Admin users) */}
+        {canAdmin && (
+          <View style={styles.navTabsWrapper}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.navTabs}>
             {isSuperAdmin && (
               <TouchableOpacity
                 style={[styles.navTab, activeTab === 'companies' && styles.navTabActive]}
@@ -416,6 +393,7 @@ export default function AdminScreen() {
             </TouchableOpacity>
           </ScrollView>
         </View>
+      )}
 
         {/* TAB 1: Companies (SuperAdmin only) */}
         {activeTab === 'companies' && isSuperAdmin && (
@@ -816,70 +794,13 @@ export default function AdminScreen() {
           <View style={styles.sectionCard}>
             <View style={styles.sectionHeader}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.sectionTitle}>Application Version & Updates</Text>
+                <Text style={styles.sectionTitle}>Settings & Updates</Text>
                 <Text style={styles.formSubtitle}>
-                  Current build information, runtime environment, and cloud connectivity status.
+                  Application version, software update check, and account session controls.
                 </Text>
               </View>
               <View style={styles.versionBadge}>
                 <Text style={styles.versionBadgeText}>v1.0.0</Text>
-              </View>
-            </View>
-
-            {/* Application Details Card */}
-            <View style={styles.settingsSubCard}>
-              <Text style={styles.settingsSubCardTitle}>📱 Application Metadata</Text>
-
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>App Name</Text>
-                <Text style={styles.infoValue}>Water Quality Monitoring System</Text>
-              </View>
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Version</Text>
-                <Text style={styles.infoValue}>1.0.0 (Production Release)</Text>
-              </View>
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Build Version</Text>
-                <Text style={styles.infoValue}>1.0.0 (Build 1)</Text>
-              </View>
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Runtime Engine</Text>
-                <Text style={styles.infoValue}>Expo SDK 54 / React Native 0.76</Text>
-              </View>
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Architecture</Text>
-                <Text style={styles.infoValue}>New Architecture (Hermes V8)</Text>
-              </View>
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Deployment Target</Text>
-                <Text style={styles.infoValue}>Android APK Standalone & Web Console</Text>
-              </View>
-            </View>
-
-            {/* Cloud & Backend Connectivity Card */}
-            <View style={styles.settingsSubCard}>
-              <Text style={styles.settingsSubCardTitle}>🌐 Cloud Services & Connectivity</Text>
-
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Cloud API Endpoint</Text>
-                <Text style={[styles.infoValue, { color: '#2563eb' }]} numberOfLines={1}>
-                  https://water-quality-system-app.vercel.app
-                </Text>
-              </View>
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Database Cluster</Text>
-                <Text style={styles.infoValue}>MongoDB Atlas (Multi-Tenant)</Text>
-              </View>
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>IoT Telemetry Provider</Text>
-                <Text style={styles.infoValue}>ThingSpeak Cloud REST API</Text>
-              </View>
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Service Status</Text>
-                <View style={styles.onlinePill}>
-                  <View style={styles.onlineDot} />
-                  <Text style={styles.onlinePillText}>Operational & Healthy</Text>
-                </View>
               </View>
             </View>
 
@@ -888,8 +809,12 @@ export default function AdminScreen() {
               <Text style={styles.settingsSubCardTitle}>🔄 Software Updates</Text>
 
               <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>App Version</Text>
+                <Text style={styles.infoValue}>1.0.0 (Production Release)</Text>
+              </View>
+              <View style={styles.infoRow}>
                 <Text style={styles.infoLabel}>Release Channel</Text>
-                <Text style={styles.infoValue}>Production (Stable Release)</Text>
+                <Text style={styles.infoValue}>Production (Stable)</Text>
               </View>
               <View style={styles.infoRow}>
                 <Text style={styles.infoLabel}>Update Status</Text>
@@ -916,14 +841,35 @@ export default function AdminScreen() {
               </TouchableOpacity>
             </View>
 
-            {/* Release Notes & Changelog Card */}
+            {/* Account & Session Card with Log Out */}
             <View style={styles.settingsSubCard}>
-              <Text style={styles.settingsSubCardTitle}>📋 Release Notes & Features (v1.0.0)</Text>
-              <Text style={styles.changelogItem}>• Multi-tenant Organization & Manager Access Control</Text>
-              <Text style={styles.changelogItem}>• High-precision 3-Sensor Monitoring: pH, Turbidity (NTU), TDS (ppm)</Text>
-              <Text style={styles.changelogItem}>• Real-time Safe Range Threshold Alerting</Text>
-              <Text style={styles.changelogItem}>• Interactive Telemetry Charts with Touch Tooltips</Text>
-              <Text style={styles.changelogItem}>• Universal Adaptive UI for Mobile & Desktop displays</Text>
+              <Text style={styles.settingsSubCardTitle}>👤 Account & Session</Text>
+
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Signed In As</Text>
+                <Text style={styles.infoValue}>{user?.name || 'User'}</Text>
+              </View>
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Email Address</Text>
+                <Text style={styles.infoValue}>{user?.email || '—'}</Text>
+              </View>
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Role</Text>
+                <Text style={[styles.infoValue, { color: '#2563eb', fontWeight: '700' }]}>
+                  {user?.role || 'User'}
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                style={styles.settingsLogoutBtn}
+                onPress={() => {
+                  signOut();
+                  router.replace('/login');
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.settingsLogoutBtnText}>🚪 Log Out</Text>
+              </TouchableOpacity>
             </View>
           </View>
         )}
@@ -967,15 +913,18 @@ const styles = StyleSheet.create({
     marginTop: 2,
     fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
   },
-  logoutBtn: {
+  settingsLogoutBtn: {
     backgroundColor: '#fee2e2',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#fca5a5',
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 12,
   },
-  logoutBtnText: {
+  settingsLogoutBtnText: {
     color: '#dc2626',
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: '700',
     fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
   },

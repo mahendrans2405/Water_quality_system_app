@@ -28,7 +28,6 @@ export default function DashboardScreen() {
   const isMobile = width < 640;
 
   const router = useRouter();
-  const signOut = authStore((s) => s.signOut);
   const user = authStore((s) => s.user);
   const companies = authStore((s) => s.companies);
   const selectedCompanyId = authStore((s) => s.selectedCompanyId);
@@ -147,23 +146,12 @@ export default function DashboardScreen() {
         {/* Header Section */}
         <View style={styles.header}>
           <View style={styles.headerTop}>
-            <View style={{ flex: 1, marginRight: 10 }}>
+            <View style={{ flex: 1 }}>
               <Text style={styles.platformTitle}>IoT Water Quality Platform</Text>
               <Text style={styles.userSubtitle}>
                 {user?.name} · <Text style={styles.roleTag}>{user?.role}</Text>
               </Text>
             </View>
-
-            <TouchableOpacity
-              style={styles.logoutBtn}
-              onPress={() => {
-                signOut();
-                router.replace('/login');
-              }}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.logoutBtnText}>Logout</Text>
-            </TouchableOpacity>
           </View>
 
           {isSuperAdmin && <CompanySelector />}
