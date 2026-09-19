@@ -19,10 +19,14 @@ const createCompanySchema = z.object({
     name: z.string().min(2).max(200),
     address: z.string().max(500).optional(),
     maxManagers: z
-      .object({
-        manager1: z.number().int().min(0).max(100).nullable().optional(),
-        manager2: z.number().int().min(0).max(100).nullable().optional(),
-      })
+      .union([
+        z.number().int().min(0).max(500),
+        z.object({
+          total: z.number().int().min(0).max(500).optional(),
+          manager1: z.number().int().min(0).max(500).nullable().optional(),
+          manager2: z.number().int().min(0).max(500).nullable().optional(),
+        }),
+      ])
       .nullable()
       .optional(),
     owner: z.object({
@@ -43,12 +47,17 @@ companiesRouter.post('/', authorize(Roles.SuperAdmin), validate(createCompanySch
     const existingOwner = await User.findOne({ email: owner.email.toLowerCase() }).lean();
     if (existingOwner) throw httpError(409, 'EMAIL_TAKEN', 'Owner email already in use');
 
+    const parsedLimit = typeof maxManagers === 'number'
+      ? maxManagers
+      : (maxManagers?.total ?? (maxManagers?.manager1 ?? 2));
+
     const company = await Company.create({
       name,
       address: address || '',
       maxManagers: {
-        manager1: maxManagers?.manager1 ?? 2,
-        manager2: maxManagers?.manager2 ?? 2,
+        total: parsedLimit,
+        manager1: parsedLimit,
+        manager2: parsedLimit,
       },
     });
 
@@ -108,6 +117,7 @@ companiesRouter.get('/', authorize(Roles.SuperAdmin), async (req, res, next) => 
         name: c.name,
         address: c.address || '',
         maxManagers: {
+          total: c.maxManagers?.total ?? (typeof c.maxManagers === 'number' ? c.maxManagers : (c.maxManagers?.manager1 ?? 2)),
           manager1: c.maxManagers?.manager1 ?? 2,
           manager2: c.maxManagers?.manager2 ?? 2,
         },
@@ -119,7 +129,7 @@ companiesRouter.get('/', authorize(Roles.SuperAdmin), async (req, res, next) => 
   }
 });
 
-companiesRouter.get('/me', authorize(Roles.Company, Roles.Manager1, Roles.Manager2), async (req, res, next) => {
+companiesRouter.get('/me', authorize(Roles.Company, Roles.Manager, Roles.Manager1, Roles.Manager2), async (req, res, next) => {
   try {
     const company = await Company.findById(req.user.companyId).lean();
     if (!company) throw httpError(404, 'COMPANY_NOT_FOUND', 'Company not found');
@@ -130,6 +140,7 @@ companiesRouter.get('/me', authorize(Roles.Company, Roles.Manager1, Roles.Manage
         name: company.name,
         address: company.address || '',
         maxManagers: {
+          total: company.maxManagers?.total ?? (typeof company.maxManagers === 'number' ? company.maxManagers : (company.maxManagers?.manager1 ?? 2)),
           manager1: company.maxManagers?.manager1 ?? 2,
           manager2: company.maxManagers?.manager2 ?? 2,
         },

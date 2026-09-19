@@ -17,8 +17,9 @@ export type CompanyInfo = {
   address?: string;
   ownerId?: string;
   maxManagers?: {
-    manager1: number;
-    manager2: number;
+    total?: number;
+    manager1?: number;
+    manager2?: number;
   };
 };
 

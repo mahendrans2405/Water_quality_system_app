@@ -38,6 +38,9 @@ npm-debug.*
 yarn-debug.*
 yarn-error.*
 *.log
+~$*
+.DS_Store
+Thumbs.db
 
 # OS & Temp
 .DS_Store

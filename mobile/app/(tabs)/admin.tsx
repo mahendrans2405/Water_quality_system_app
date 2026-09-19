@@ -81,11 +81,14 @@ export default function AdminScreen() {
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [lastCheckedTime, setLastCheckedTime] = useState<string>('Just now');
 
-  async function loadUsers() {
+  async function loadUsers(companyId?: string) {
+    const targetCompanyId = companyId || (isCompanyUser ? user?.companyId : selectedCompanyId);
     setError(null);
     setLoading(true);
     try {
-      const res = await api.get('/api/users');
+      const res = await api.get('/api/users', {
+        params: targetCompanyId ? { companyId: targetCompanyId } : undefined,
+      });
       setUsers(res.data.data || []);
     } catch (e: any) {
       setError(e?.response?.data?.error?.message ?? 'Failed to load users');
@@ -96,9 +99,16 @@ export default function AdminScreen() {
 
   async function loadCompanies() {
     try {
-      const res = await api.get('/api/companies');
-      if (res.data.ok) {
-        setCompanies(res.data.data);
+      if (isSuperAdmin) {
+        const res = await api.get('/api/companies');
+        if (res.data.ok) {
+          setCompanies(res.data.data);
+        }
+      } else if (isCompanyUser) {
+        const res = await api.get('/api/companies/me');
+        if (res.data.ok && res.data.data) {
+          setCompanies([res.data.data]);
+        }
       }
     } catch (e: any) {
       console.warn('Failed to load companies:', e);
@@ -223,24 +233,39 @@ export default function AdminScreen() {
 
   useEffect(() => {
     if (canAdmin) {
-      loadUsers();
-      if (isSuperAdmin) {
-        loadCompanies();
-      }
+      loadCompanies();
     }
-  }, [canAdmin, isSuperAdmin]);
+  }, [canAdmin, isSuperAdmin, isCompanyUser]);
 
   useEffect(() => {
     const targetId = isCompanyUser ? user?.companyId : selectedCompanyId;
-    if (canAdmin && targetId) {
-      loadDevices(targetId);
+    if (canAdmin) {
+      loadUsers(targetId || undefined);
+      if (targetId) {
+        loadDevices(targetId);
+      }
     }
-  }, [selectedCompanyId, user?.companyId]);
+  }, [selectedCompanyId, user?.companyId, canAdmin, isCompanyUser]);
 
   async function handleCreateManager() {
-    const targetCompanyId = isCompanyUser ? user.companyId : selectedCompanyId;
+    const targetCompanyId = isCompanyUser ? user?.companyId : selectedCompanyId;
     if (!targetCompanyId) {
       Alert.alert('Selection Error', 'Please select a company first.');
+      return;
+    }
+
+    const currentCompany = companies.find((c) => c.id === targetCompanyId);
+    const managerLimit = typeof currentCompany?.maxManagers === 'number'
+      ? currentCompany.maxManagers
+      : (currentCompany?.maxManagers?.total ?? currentCompany?.maxManagers?.manager1 ?? 2);
+    const currentManagers = users.filter(
+      (u) => (u.role?.toLowerCase() === 'manager' || u.role?.toLowerCase().includes('manager')) && u.isActive !== false
+    );
+    if (currentManagers.length >= managerLimit) {
+      Alert.alert(
+        'Manager Limit Reached',
+        `Maximum manager quota reached for this organization (${currentManagers.length}/${managerLimit}). Delete an existing manager or contact SuperAdmin to increase the limit.`
+      );
       return;
     }
 
@@ -260,7 +285,7 @@ export default function AdminScreen() {
 
       if (res.data?.ok) {
         setManagerForm({ name: '', email: '', password: '', roleName: 'Manager' });
-        await loadUsers();
+        await loadUsers(targetCompanyId);
         Alert.alert('Success', `Manager account created for ${managerForm.email}`);
       }
     } catch (e: any) {
@@ -424,7 +449,7 @@ export default function AdminScreen() {
 
                   {c.address ? <Text style={styles.companyMeta}>📍 {c.address}</Text> : null}
                   <Text style={styles.companyMeta}>
-                    Quota: {c.maxManagers?.manager1 ?? 2} M1, {c.maxManagers?.manager2 ?? 2} M2
+                    Manager Quota: {typeof c.maxManagers === 'number' ? c.maxManagers : (c.maxManagers?.total ?? c.maxManagers?.manager1 ?? 2)} Max
                   </Text>
 
                   <View style={styles.companyActionsRow}>
@@ -716,73 +741,136 @@ export default function AdminScreen() {
         )}
 
         {/* TAB 2: Users & Managers */}
-        {activeTab === 'users' && (
-          <View style={styles.sectionCard}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>User Management</Text>
-              <TouchableOpacity style={styles.refreshBtn} onPress={loadUsers} disabled={loading}>
-                <Text style={styles.refreshBtnText}>🔄 Refresh</Text>
-              </TouchableOpacity>
-            </View>
+        {activeTab === 'users' && (() => {
+          const targetCompanyId = isCompanyUser ? user?.companyId : selectedCompanyId;
+          const currentCompany = companies.find((c) => c.id === targetCompanyId);
+          const managerLimit = typeof currentCompany?.maxManagers === 'number'
+            ? currentCompany.maxManagers
+            : (currentCompany?.maxManagers?.total ?? currentCompany?.maxManagers?.manager1 ?? 2);
+          const currentManagers = users.filter(
+            (u) => (u.role?.toLowerCase() === 'manager' || u.role?.toLowerCase().includes('manager')) && u.isActive !== false
+          );
+          const currentCount = currentManagers.length;
+          const remainingSlots = Math.max(0, managerLimit - currentCount);
+          const isLimitReached = currentCount >= managerLimit;
 
-            {/* Create Manager Form */}
-            <View style={styles.managerForm}>
-              <Text style={styles.formTitle}>Add New Manager / Operator</Text>
-              <Text style={styles.formSubtitle}>
-                Managers receive view-only access and are restricted from downloading telemetry.
-              </Text>
+          return (
+            <View style={styles.sectionCard}>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>User Management</Text>
+                <TouchableOpacity style={styles.refreshBtn} onPress={() => loadUsers()} disabled={loading}>
+                  <Text style={styles.refreshBtnText}>🔄 Refresh</Text>
+                </TouchableOpacity>
+              </View>
 
-              <TextInput
-                style={styles.input}
-                value={managerForm.name}
-                placeholder="Full Name"
-                onChangeText={(txt) => setManagerForm((p) => ({ ...p, name: txt }))}
-              />
-
-              <TextInput
-                style={styles.input}
-                value={managerForm.email}
-                placeholder="Email Address"
-                autoCapitalize="none"
-                keyboardType="email-address"
-                onChangeText={(txt) => setManagerForm((p) => ({ ...p, email: txt }))}
-              />
-
-              <TextInput
-                style={styles.input}
-                value={managerForm.password}
-                placeholder="Password (min 8 chars)"
-                secureTextEntry
-                onChangeText={(txt) => setManagerForm((p) => ({ ...p, password: txt }))}
-              />
-
-              <TouchableOpacity style={styles.createManagerBtn} onPress={handleCreateManager}>
-                <Text style={styles.createManagerBtnText}>Create Manager Account</Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* User List */}
-            {loading && <ActivityIndicator style={{ marginVertical: 12 }} />}
-            {users.map((u) => (
-              <View key={u.id} style={styles.userCard}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.userName}>{u.name}</Text>
-                  <Text style={styles.userEmail}>{u.email}</Text>
-                  <Text style={styles.userMeta}>Role: {u.role} · Active: {String(u.isActive)}</Text>
+              {/* Manager Allocation & Quota Banner (Shown before creating manager) */}
+              <View style={[styles.quotaBanner, isLimitReached ? styles.quotaBannerFull : styles.quotaBannerNormal]}>
+                <View style={styles.quotaHeaderRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.quotaTitle}>
+                      {isLimitReached ? '⚠️ Manager Quota Reached' : '🛡️ Manager Allocation Quota'}
+                    </Text>
+                    <Text style={styles.quotaSubtitle}>
+                      {isLimitReached
+                        ? `Maximum manager capacity reached (${currentCount}/${managerLimit}). To add a new manager, an existing manager must be removed.`
+                        : `This organization can register up to ${managerLimit} manager accounts. (${remainingSlots} slot${remainingSlots === 1 ? '' : 's'} available)`}
+                    </Text>
+                  </View>
+                  <View style={[styles.quotaBadge, isLimitReached ? styles.quotaBadgeFull : styles.quotaBadgeNormal]}>
+                    <Text style={[styles.quotaBadgeText, isLimitReached ? styles.quotaBadgeTextFull : styles.quotaBadgeTextNormal]}>
+                      {currentCount} / {managerLimit} Used
+                    </Text>
+                  </View>
                 </View>
 
-                {u.role !== 'SuperAdmin' && u.email !== user?.email && (
-                  <TouchableOpacity
-                    style={styles.userDeleteBtn}
-                    onPress={() => handleDeleteUser(u.id, u.name)}
-                  >
-                    <Text style={styles.userDeleteBtnText}>Delete</Text>
-                  </TouchableOpacity>
-                )}
+                <View style={styles.quotaStatsRow}>
+                  <View style={styles.quotaStatItem}>
+                    <Text style={styles.quotaStatLabel}>Total Allowed</Text>
+                    <Text style={styles.quotaStatValue}>{managerLimit} Max</Text>
+                  </View>
+                  <View style={styles.quotaStatDivider} />
+                  <View style={styles.quotaStatItem}>
+                    <Text style={styles.quotaStatLabel}>Active Managers</Text>
+                    <Text style={styles.quotaStatValue}>{currentCount}</Text>
+                  </View>
+                  <View style={styles.quotaStatDivider} />
+                  <View style={styles.quotaStatItem}>
+                    <Text style={styles.quotaStatLabel}>Available Slots</Text>
+                    <Text style={[styles.quotaStatValue, isLimitReached ? { color: '#DC2626' } : { color: '#059669' }]}>
+                      {remainingSlots}
+                    </Text>
+                  </View>
+                </View>
               </View>
-            ))}
-          </View>
-        )}
+
+              {/* Create Manager Form */}
+              <View style={styles.managerForm}>
+                <Text style={styles.formTitle}>Add New Manager / Operator</Text>
+                <Text style={styles.formSubtitle}>
+                  Managers receive view-only access and are restricted from downloading telemetry.
+                </Text>
+
+                <TextInput
+                  style={[styles.input, isLimitReached && styles.inputDisabled]}
+                  value={managerForm.name}
+                  placeholder="Full Name"
+                  onChangeText={(txt) => setManagerForm((p) => ({ ...p, name: txt }))}
+                  editable={!isLimitReached}
+                />
+
+                <TextInput
+                  style={[styles.input, isLimitReached && styles.inputDisabled]}
+                  value={managerForm.email}
+                  placeholder="Email Address"
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                  onChangeText={(txt) => setManagerForm((p) => ({ ...p, email: txt }))}
+                  editable={!isLimitReached}
+                />
+
+                <TextInput
+                  style={[styles.input, isLimitReached && styles.inputDisabled]}
+                  value={managerForm.password}
+                  placeholder="Password (min 8 chars)"
+                  secureTextEntry
+                  onChangeText={(txt) => setManagerForm((p) => ({ ...p, password: txt }))}
+                  editable={!isLimitReached}
+                />
+
+                <TouchableOpacity
+                  style={[styles.createManagerBtn, isLimitReached && styles.createManagerBtnDisabled]}
+                  onPress={handleCreateManager}
+                  disabled={isLimitReached}
+                >
+                  <Text style={styles.createManagerBtnText}>
+                    {isLimitReached ? 'Manager Quota Full (Limit Reached)' : 'Create Manager Account'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* User List */}
+              {loading && <ActivityIndicator style={{ marginVertical: 12 }} />}
+              {users.map((u) => (
+                <View key={u.id} style={styles.userCard}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.userName}>{u.name}</Text>
+                    <Text style={styles.userEmail}>{u.email}</Text>
+                    <Text style={styles.userMeta}>Role: {u.role} · Active: {String(u.isActive)}</Text>
+                  </View>
+
+                  {u.role !== 'SuperAdmin' && u.email !== user?.email && (
+                    <TouchableOpacity
+                      style={styles.userDeleteBtn}
+                      onPress={() => handleDeleteUser(u.id, u.name)}
+                    >
+                      <Text style={styles.userDeleteBtnText}>Delete</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              ))}
+            </View>
+          );
+        })()}
 
         {/* TAB 3: Audit Trail */}
         {activeTab === 'audit' && (
@@ -1101,6 +1189,99 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 12,
     fontWeight: '700',
+  },
+  createManagerBtnDisabled: {
+    backgroundColor: '#94a3b8',
+    opacity: 0.7,
+  },
+  inputDisabled: {
+    backgroundColor: '#f1f5f9',
+    color: '#94a3b8',
+  },
+  quotaBanner: {
+    borderRadius: 10,
+    borderWidth: 1,
+    padding: 14,
+    marginBottom: 14,
+    gap: 10,
+  },
+  quotaBannerNormal: {
+    backgroundColor: '#f0fdf4',
+    borderColor: '#bbf7d0',
+  },
+  quotaBannerFull: {
+    backgroundColor: '#fef2f2',
+    borderColor: '#fecaca',
+  },
+  quotaHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  quotaTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0f172a',
+    marginBottom: 2,
+  },
+  quotaSubtitle: {
+    fontSize: 12,
+    color: '#475569',
+    lineHeight: 16,
+  },
+  quotaBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+  },
+  quotaBadgeNormal: {
+    backgroundColor: '#dcfce7',
+  },
+  quotaBadgeFull: {
+    backgroundColor: '#fee2e2',
+  },
+  quotaBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  quotaBadgeTextNormal: {
+    color: '#166534',
+  },
+  quotaBadgeTextFull: {
+    color: '#991b1b',
+  },
+  quotaStatsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.85)',
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.06)',
+  },
+  quotaStatItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  quotaStatLabel: {
+    fontSize: 10,
+    color: '#64748b',
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    marginBottom: 2,
+  },
+  quotaStatValue: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
+  quotaStatDivider: {
+    width: 1,
+    height: 24,
+    backgroundColor: '#e2e8f0',
   },
   userCard: {
     flexDirection: 'row',

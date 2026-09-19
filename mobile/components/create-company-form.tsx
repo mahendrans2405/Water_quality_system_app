@@ -26,8 +26,7 @@ export function CreateCompanyForm({ onSuccess, onCancel }: CreateCompanyFormProp
     ownerEmail: '',
     ownerPassword: '',
     confirmPassword: '',
-    manager1Limit: '2',
-    manager2Limit: '2',
+    managerLimit: '2',
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -53,12 +52,14 @@ export function CreateCompanyForm({ onSuccess, onCancel }: CreateCompanyFormProp
 
     setLoading(true);
     try {
+      const parsedLimit = Math.max(0, parseInt(formData.managerLimit, 10) || 2);
       const response = await api.post('/api/companies', {
         name: formData.companyName,
         address: formData.companyAddress,
         maxManagers: {
-          manager1: parseInt(formData.manager1Limit, 10) || 2,
-          manager2: parseInt(formData.manager2Limit, 10) || 2,
+          total: parsedLimit,
+          manager1: parsedLimit,
+          manager2: parsedLimit,
         },
         owner: {
           name: formData.ownerName,
@@ -124,30 +125,17 @@ export function CreateCompanyForm({ onSuccess, onCancel }: CreateCompanyFormProp
         />
       </View>
 
-      {/* Manager Limits */}
-      <View style={styles.row}>
-        <View style={styles.halfInput}>
-          <Text style={styles.label}>Manager1 Limit</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="2"
-            keyboardType="number-pad"
-            value={formData.manager1Limit}
-            onChangeText={(text) => setFormData({ ...formData, manager1Limit: text })}
-            editable={!loading}
-          />
-        </View>
-        <View style={styles.halfInput}>
-          <Text style={styles.label}>Manager2 Limit</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="2"
-            keyboardType="number-pad"
-            value={formData.manager2Limit}
-            onChangeText={(text) => setFormData({ ...formData, manager2Limit: text })}
-            editable={!loading}
-          />
-        </View>
+      {/* Manager Limit */}
+      <View style={styles.inputGroup}>
+        <Text style={styles.label}>Manager Limit (Max Managers Allowed)</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="2"
+          keyboardType="number-pad"
+          value={formData.managerLimit}
+          onChangeText={(text) => setFormData({ ...formData, managerLimit: text })}
+          editable={!loading}
+        />
       </View>
 
       {/* Owner Section */}

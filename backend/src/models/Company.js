@@ -5,6 +5,7 @@ const companySchema = new mongoose.Schema(
     name: { type: String, required: true, trim: true },
     address: { type: String, default: '' },
     maxManagers: {
+      total: { type: Number, default: 2, min: 0 },
       manager1: { type: Number, default: 2, min: 0 },
       manager2: { type: Number, default: 2, min: 0 },
     },
