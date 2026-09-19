@@ -1,16 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  SafeAreaView,
-  ScrollView,
-  Text,
-  View,
-  TextInput,
-  StyleSheet,
-  TouchableOpacity,
   Alert,
   Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  useWindowDimensions,
+  View,
 } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 
 import { api } from '../../src/api/client';
@@ -22,6 +23,10 @@ import { DeviceFieldMapper } from '../../components/device-field-mapper';
 import type { DeviceSummary, FieldMapping } from '../../src/api/types';
 
 export default function AdminScreen() {
+  const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const isMobile = width < 650;
+
   const router = useRouter();
   const user = authStore((s) => s.user);
   const companies = authStore((s) => s.companies);
@@ -373,12 +378,12 @@ export default function AdminScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+      <ScrollView contentContainerStyle={[styles.scrollContent, { maxWidth: 1080, width: '100%', alignSelf: 'center', paddingBottom: Math.max(insets.bottom, 24) + 24 }]}>
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.headerTop}>
-            <View>
+            <View style={{ flex: 1, marginRight: 8 }}>
               <Text style={styles.title}>Administration Console</Text>
               <Text style={styles.userInfo}>
                 Logged in as: {user?.name} ({user?.role})
@@ -391,6 +396,7 @@ export default function AdminScreen() {
                 signOut();
                 router.replace('/login');
               }}
+              activeOpacity={0.7}
             >
               <Text style={styles.logoutBtnText}>Logout</Text>
             </TouchableOpacity>
@@ -400,53 +406,60 @@ export default function AdminScreen() {
         </View>
 
         {/* Section Navigation Tabs */}
-        <View style={styles.navTabs}>
-          {isSuperAdmin && (
+        <View style={styles.navTabsWrapper}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.navTabs}>
+            {isSuperAdmin && (
+              <TouchableOpacity
+                style={[styles.navTab, activeTab === 'companies' && styles.navTabActive]}
+                onPress={() => setActiveTab('companies')}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.navTabText, activeTab === 'companies' && styles.navTabTextActive]}>
+                  🏢 Companies
+                </Text>
+              </TouchableOpacity>
+            )}
+
             <TouchableOpacity
-              style={[styles.navTab, activeTab === 'companies' && styles.navTabActive]}
-              onPress={() => setActiveTab('companies')}
+              style={[styles.navTab, activeTab === 'devices' && styles.navTabActive]}
+              onPress={() => setActiveTab('devices')}
+              activeOpacity={0.7}
             >
-              <Text style={[styles.navTabText, activeTab === 'companies' && styles.navTabTextActive]}>
-                🏢 Companies
+              <Text style={[styles.navTabText, activeTab === 'devices' && styles.navTabTextActive]}>
+                📡 IoT Devices ({devices.length})
               </Text>
             </TouchableOpacity>
-          )}
 
-          <TouchableOpacity
-            style={[styles.navTab, activeTab === 'devices' && styles.navTabActive]}
-            onPress={() => setActiveTab('devices')}
-          >
-            <Text style={[styles.navTabText, activeTab === 'devices' && styles.navTabTextActive]}>
-              📡 IoT Devices ({devices.length})
-            </Text>
-          </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.navTab, activeTab === 'users' && styles.navTabActive]}
+              onPress={() => setActiveTab('users')}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.navTabText, activeTab === 'users' && styles.navTabTextActive]}>
+                👥 Users & Managers
+              </Text>
+            </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[styles.navTab, activeTab === 'users' && styles.navTabActive]}
-            onPress={() => setActiveTab('users')}
-          >
-            <Text style={[styles.navTabText, activeTab === 'users' && styles.navTabTextActive]}>
-              👥 Users & Managers
-            </Text>
-          </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.navTab, activeTab === 'audit' && styles.navTabActive]}
+              onPress={() => setActiveTab('audit')}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.navTabText, activeTab === 'audit' && styles.navTabTextActive]}>
+                📋 Audit Trail
+              </Text>
+            </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[styles.navTab, activeTab === 'audit' && styles.navTabActive]}
-            onPress={() => setActiveTab('audit')}
-          >
-            <Text style={[styles.navTabText, activeTab === 'audit' && styles.navTabTextActive]}>
-              📋 Audit Trail
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.navTab, activeTab === 'config' && styles.navTabActive]}
-            onPress={() => setActiveTab('config')}
-          >
-            <Text style={[styles.navTabText, activeTab === 'config' && styles.navTabTextActive]}>
-              ⚙️ Settings
-            </Text>
-          </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.navTab, activeTab === 'config' && styles.navTabActive]}
+              onPress={() => setActiveTab('config')}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.navTabText, activeTab === 'config' && styles.navTabTextActive]}>
+                ⚙️ Settings
+              </Text>
+            </TouchableOpacity>
+          </ScrollView>
         </View>
 
         {/* TAB 1: Companies (SuperAdmin only) */}
@@ -884,11 +897,13 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '800',
     color: '#0f172a',
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
   },
   userInfo: {
     fontSize: 12,
     color: '#64748b',
     marginTop: 2,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
   },
   logoutBtn: {
     backgroundColor: '#fee2e2',
@@ -900,11 +915,15 @@ const styles = StyleSheet.create({
     color: '#dc2626',
     fontSize: 11,
     fontWeight: '700',
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
+  },
+  navTabsWrapper: {
+    marginVertical: 2,
   },
   navTabs: {
     flexDirection: 'row',
     gap: 8,
-    flexWrap: 'wrap',
+    paddingVertical: 2,
   },
   navTab: {
     backgroundColor: '#fff',
@@ -922,9 +941,11 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: '#475569',
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
   },
   navTabTextActive: {
     color: '#fff',
+    fontWeight: '700',
   },
   sectionCard: {
     backgroundColor: '#fff',

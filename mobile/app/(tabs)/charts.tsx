@@ -4,7 +4,6 @@ import {
   Alert,
   Platform,
   Pressable,
-  SafeAreaView,
   ScrollView,
   Text,
   View,
@@ -12,6 +11,7 @@ import {
   TouchableOpacity,
   useWindowDimensions,
 } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, {
   Circle,
   Rect,
@@ -33,7 +33,9 @@ export default function ChartsScreen() {
   const user = authStore((s) => s.user);
   const selectedCompanyId = authStore((s) => s.selectedCompanyId);
   const isSuperAdmin = user?.role === 'SuperAdmin';
+  const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
+  const isMobile = width < 650;
 
   const [devices, setDevices] = useState<DeviceSummary[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null);
@@ -386,11 +388,11 @@ export default function ChartsScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+      <ScrollView contentContainerStyle={[styles.scrollContent, { maxWidth: 1080, width: '100%', alignSelf: 'center', paddingBottom: Math.max(insets.bottom, 24) + 24 }]}>
         {/* Header & Corner Date Picker (One Day, One Week, One Month, Custom) */}
-        <View style={styles.headerRow}>
-          <View style={{ flex: 1 }}>
+        <View style={[styles.headerRow, isMobile && styles.headerRowMobile]}>
+          <View style={{ flex: isMobile ? undefined : 1 }}>
             <Text style={styles.title}>IoT Telemetry Analytics</Text>
             <Text style={styles.subtitle}>
               Interactive parameter curve with real-time cursor hover.
@@ -780,15 +782,22 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     gap: 8,
   },
+  headerRowMobile: {
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
   title: {
     fontSize: 20,
     fontWeight: '800',
     color: '#0f172a',
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
   },
   subtitle: {
     fontSize: 11,
     color: '#64748b',
     marginTop: 2,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
   },
   noDeviceNotice: {
     color: '#64748b',

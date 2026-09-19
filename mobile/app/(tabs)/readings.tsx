@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  SafeAreaView,
+  Platform,
   ScrollView,
   Text,
   useWindowDimensions,
@@ -9,6 +9,7 @@ import {
   StyleSheet,
   TouchableOpacity,
 } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { api } from '../../src/api/client';
 import { authStore } from '../../src/state/authStore';
@@ -23,6 +24,7 @@ export default function ReadingsScreen() {
   const selectedCompanyId = authStore((s) => s.selectedCompanyId);
   const isSuperAdmin = user?.role === 'SuperAdmin';
   const canDownload = authStore((s) => s.canDownload());
+  const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
 
   const isMobile = width < 650;
@@ -132,11 +134,11 @@ export default function ReadingsScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.content}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+      <View style={[styles.content, { maxWidth: 1080, width: '100%', alignSelf: 'center', paddingBottom: Math.max(insets.bottom, 16) }]}>
         {/* Header Title & Corner Date Picker */}
-        <View style={styles.headerRow}>
-          <View style={{ flex: 1 }}>
+        <View style={[styles.headerRow, isMobile && styles.headerRowMobile]}>
+          <View style={{ flex: isMobile ? undefined : 1 }}>
             <Text style={styles.title}>Historical Readings</Text>
             <Text style={styles.subtitle}>
               Sensor logs (Latest at top · {sortedItems.length} records)
@@ -397,15 +399,22 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     gap: 8,
   },
+  headerRowMobile: {
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
   title: {
     fontSize: 20,
     fontWeight: '800',
     color: '#0f172a',
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
   },
   subtitle: {
     fontSize: 11,
     color: '#64748b',
     marginTop: 2,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
   },
   noDeviceNotice: {
     color: '#64748b',
