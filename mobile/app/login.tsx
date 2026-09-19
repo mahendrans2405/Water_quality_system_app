@@ -11,7 +11,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { Link, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 
 import { api } from '../src/api/client';
 import { authStore } from '../src/state/authStore';
@@ -242,15 +242,6 @@ export default function LoginScreen() {
               )}
             </View>
 
-            {/* Registration Link */}
-            <View style={styles.registerContainer}>
-              <Text style={styles.registerPrompt}>Need a new organization account? </Text>
-              <Link href="/register" asChild>
-                <TouchableOpacity>
-                  <Text style={styles.registerLinkText}>Register here</Text>
-                </TouchableOpacity>
-              </Link>
-            </View>
 
             {/* Security Footer Notice */}
             <View style={styles.securityFooter}>
@@ -478,21 +469,6 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 13,
     fontWeight: '700',
-  },
-  registerContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 20,
-  },
-  registerPrompt: {
-    fontSize: 13,
-    color: '#64748b',
-  },
-  registerLinkText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#2563eb',
   },
   securityFooter: {
     marginTop: 20,
