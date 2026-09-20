@@ -37,37 +37,82 @@ type AuthState = {
   canDownload: () => boolean;
 };
 
+function getSavedState(): Partial<AuthState> {
+  if (typeof window !== 'undefined' && window.localStorage) {
+    try {
+      const data = window.localStorage.getItem('aquaflow_auth');
+      if (data) return JSON.parse(data);
+    } catch (e) {}
+  }
+  return {};
+}
+
+function saveState(state: Partial<AuthState>) {
+  if (typeof window !== 'undefined' && window.localStorage) {
+    try {
+      window.localStorage.setItem(
+        'aquaflow_auth',
+        JSON.stringify({
+          user: state.user,
+          accessToken: state.accessToken,
+          refreshToken: state.refreshToken,
+          companies: state.companies,
+          selectedCompanyId: state.selectedCompanyId,
+        })
+      );
+    } catch (e) {}
+  }
+}
+
+const saved = getSavedState();
+
 export const authStore = create<AuthState>((set, get) => ({
-  user: null,
-  accessToken: null,
-  refreshToken: null,
-  companies: [],
-  selectedCompanyId: null,
+  user: saved.user || null,
+  accessToken: saved.accessToken || null,
+  refreshToken: saved.refreshToken || null,
+  companies: saved.companies || [],
+  selectedCompanyId: saved.selectedCompanyId || null,
 
   setAuth: ({ user, accessToken, refreshToken }) =>
-    set((state) => ({
-      user,
-      accessToken,
-      refreshToken,
-      selectedCompanyId: user.companyId || state.selectedCompanyId || null,
-    })),
+    set((state) => {
+      const next = {
+        user,
+        accessToken,
+        refreshToken,
+        selectedCompanyId: user.companyId || state.selectedCompanyId || null,
+      };
+      saveState({ ...state, ...next });
+      return next;
+    }),
 
   setCompanies: (companies) =>
-    set((state) => ({
-      companies,
-      selectedCompanyId: state.selectedCompanyId || (companies.length > 0 ? companies[0].id : null),
-    })),
+    set((state) => {
+      const next = {
+        companies,
+        selectedCompanyId: state.selectedCompanyId || (companies.length > 0 ? companies[0].id : null),
+      };
+      saveState({ ...state, ...next });
+      return next;
+    }),
 
-  setSelectedCompanyId: (companyId) => set({ selectedCompanyId: companyId }),
+  setSelectedCompanyId: (companyId) =>
+    set((state) => {
+      const next = { selectedCompanyId: companyId };
+      saveState({ ...state, ...next });
+      return next;
+    }),
 
-  signOut: () =>
-    set({
+  signOut: () => {
+    const next = {
       user: null,
       accessToken: null,
       refreshToken: null,
       companies: [],
       selectedCompanyId: null,
-    }),
+    };
+    saveState(next);
+    set(next);
+  },
 
   hasPermission: (permission: string) => {
     const user = get().user;
