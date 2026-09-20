@@ -74,6 +74,23 @@ export default function LoginScreen() {
 
     setAuth({ user: userData, accessToken: tokens.accessToken, refreshToken: tokens.refreshToken });
 
+    if (typeof window !== 'undefined' && window.localStorage) {
+      try {
+        const comps = authStore.getState().companies;
+        const selComp = authStore.getState().selectedCompanyId;
+        window.localStorage.setItem(
+          'aquaflow_auth',
+          JSON.stringify({
+            user: userData,
+            accessToken: tokens.accessToken,
+            refreshToken: tokens.refreshToken,
+            companies: comps,
+            selectedCompanyId: selComp,
+          })
+        );
+      } catch (e) {}
+    }
+
     if (userData.role === 'SuperAdmin') {
       router.replace('/(tabs)/admin');
     } else {

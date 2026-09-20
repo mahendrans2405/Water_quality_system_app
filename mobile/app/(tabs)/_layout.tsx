@@ -16,6 +16,24 @@ export default function TabLayout() {
   const role = authStore((s) => s.user?.role);
 
   if (!isAuthed) {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      const savedAuth = window.localStorage.getItem('aquaflow_auth');
+      if (savedAuth) {
+        try {
+          const parsed = JSON.parse(savedAuth);
+          if (parsed.accessToken && parsed.user) {
+            authStore.getState().setAuth(parsed);
+            if (Array.isArray(parsed.companies) && parsed.companies.length > 0) {
+              authStore.getState().setCompanies(parsed.companies);
+            }
+            if (parsed.selectedCompanyId) {
+              authStore.getState().setSelectedCompanyId(parsed.selectedCompanyId);
+            }
+            return null;
+          }
+        } catch (e) {}
+      }
+    }
     return <Redirect href="/login" />;
   }
 
