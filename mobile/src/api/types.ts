@@ -10,6 +10,33 @@ export type FieldMapping = {
   maxThreshold?: number | null;
 };
 
+export type Unit = {
+  _id?: string;
+  name: string;
+  description?: string;
+};
+
+export type Branch = {
+  _id?: string;
+  name: string;
+  code?: string;
+  address?: string;
+  units: Unit[];
+};
+
+export type Company = {
+  id: string;
+  name: string;
+  address?: string;
+  branches?: Branch[];
+  maxManagers?: {
+    total: number;
+    manager1: number;
+    manager2: number;
+  };
+  ownerId?: string | null;
+};
+
 export type DeviceSummary = {
   id: string;
   deviceId: string;
@@ -17,6 +44,8 @@ export type DeviceSummary = {
   deviceType: string;
   channelId: string;
   hasReadKey: boolean;
+  branch?: string;
+  unit?: string;
   location?: string;
   status: 'Online' | 'Offline' | 'Warning' | 'No Recent Data';
   lastDataReceived: string | null;

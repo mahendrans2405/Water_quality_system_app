@@ -25,16 +25,29 @@ async function getAuthorizedDevice(deviceIdOrMongoId, user) {
   const device = await Device.findOne(query);
   if (!device) throw httpError(404, 'DEVICE_NOT_FOUND', 'Device not found');
 
+  // Strict company isolation
   if (user.role !== Roles.SuperAdmin && String(device.company) !== user.companyId) {
-    throw httpError(403, 'FORBIDDEN', 'Access denied to this device');
+    throw httpError(403, 'FORBIDDEN', 'Access denied: You cannot access devices from another company');
   }
 
-  // Scoping for Manager role
+  // Scoping for Manager role (branch, unit, assigned devices)
   const isManager = user.role === Roles.Manager || user.role === Roles.Manager1 || user.role === Roles.Manager2;
   if (isManager) {
-    const assignedCount = await Device.countDocuments({ company: user.companyId, assignedManager: user.id });
-    if (assignedCount > 0 && String(device.assignedManager) !== user.id) {
-      throw httpError(403, 'FORBIDDEN', 'This device is not assigned to you');
+    if (user.branch && device.branch && user.branch.toLowerCase() !== device.branch.toLowerCase()) {
+      throw httpError(403, 'FORBIDDEN', 'Access denied: Device belongs to another branch');
+    }
+    if (user.unit && device.unit && user.unit.toLowerCase() !== device.unit.toLowerCase()) {
+      throw httpError(403, 'FORBIDDEN', 'Access denied: Device belongs to another unit');
+    }
+    if (Array.isArray(user.assignedDevices) && user.assignedDevices.length > 0) {
+      if (!user.assignedDevices.includes(String(device._id))) {
+        throw httpError(403, 'FORBIDDEN', 'Access denied: This device is not assigned to your account');
+      }
+    } else {
+      const assignedCount = await Device.countDocuments({ company: user.companyId, assignedManager: user.id });
+      if (assignedCount > 0 && String(device.assignedManager) !== user.id) {
+        throw httpError(403, 'FORBIDDEN', 'This device is not assigned to you');
+      }
     }
   }
 
@@ -188,11 +201,16 @@ iotRouter.get(
         }
       }
 
-      const result = await ioTDataService.getTelemetryHistory(device, {
-        results: limit,
-        start,
-        end,
-      });
+      let result;
+      try {
+        result = await ioTDataService.getTelemetryHistory(device, {
+          results: limit,
+          start,
+          end,
+        });
+      } catch (historyErr) {
+        result = { items: [], isStale: true };
+      }
 
       // Generate CSV
       const mappings = device.fieldMappings && device.fieldMappings.length > 0

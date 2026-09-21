@@ -7,7 +7,6 @@ const { configRouter } = require('./config');
 const { devicesRouter } = require('./devices');
 const { waterRouter } = require('./water');
 const { iotRouter } = require('./iotData');
-const { auditRouter } = require('./audit');
 
 const apiRouter = express.Router();
 
@@ -21,7 +20,6 @@ apiRouter.use('/companies', companiesRouter);
 apiRouter.use('/config', configRouter);
 apiRouter.use('/devices', devicesRouter);
 apiRouter.use('/iot', iotRouter);
-apiRouter.use('/audit-logs', auditRouter);
 apiRouter.use('/water', waterRouter);
 
 module.exports = { apiRouter };

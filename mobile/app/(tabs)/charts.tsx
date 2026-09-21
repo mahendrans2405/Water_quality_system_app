@@ -33,6 +33,7 @@ export default function ChartsScreen() {
   const user = authStore((s) => s.user);
   const selectedCompanyId = authStore((s) => s.selectedCompanyId);
   const isSuperAdmin = user?.role === 'SuperAdmin';
+  const canDownload = authStore((s) => s.canDownload());
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const isMobile = width < 650;
@@ -444,7 +445,7 @@ export default function ChartsScreen() {
                   }}
                 >
                   <Text style={[styles.deviceTabText, selectedDeviceId === d.id && styles.deviceTabTextActive]}>
-                    {d.name || d.deviceId}
+                    {d.name || d.deviceId} {d.branch ? `(🌿 ${d.branch})` : ''}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -527,16 +528,18 @@ export default function ChartsScreen() {
               </View>
 
               <View style={styles.chartHeaderRight}>
-                {/* Download Graph as Image Button */}
-                <TouchableOpacity
-                  style={styles.downloadImgBtn}
-                  onPress={handleDownloadImage}
-                  disabled={downloading}
-                >
-                  <Text style={styles.downloadImgBtnText}>
-                    {downloading ? 'Exporting...' : '📷 Download Graph'}
-                  </Text>
-                </TouchableOpacity>
+                {/* Download Graph as Image Button (Visible only to SuperAdmin and Company users, hidden for Manager) */}
+                {canDownload && (
+                  <TouchableOpacity
+                    style={styles.downloadImgBtn}
+                    onPress={handleDownloadImage}
+                    disabled={downloading}
+                  >
+                    <Text style={styles.downloadImgBtnText}>
+                      {downloading ? 'Exporting...' : '📷 Download Graph'}
+                    </Text>
+                  </TouchableOpacity>
+                )}
               </View>
             </View>
 

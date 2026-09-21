@@ -29,6 +29,23 @@ const createCompanySchema = z.object({
       ])
       .nullable()
       .optional(),
+    branches: z
+      .array(
+        z.object({
+          name: z.string().min(1).max(200),
+          code: z.string().max(50).optional(),
+          address: z.string().max(500).optional(),
+          units: z
+            .array(
+              z.object({
+                name: z.string().min(1).max(200),
+                description: z.string().max(500).optional(),
+              })
+            )
+            .optional(),
+        })
+      )
+      .optional(),
     owner: z.object({
       name: z.string().min(2).max(100),
       email: z.string().email(),
@@ -39,7 +56,7 @@ const createCompanySchema = z.object({
 
 companiesRouter.post('/', authorize(Roles.SuperAdmin), validate(createCompanySchema), async (req, res, next) => {
   try {
-    const { name, address, maxManagers, owner } = req.validated.body;
+    const { name, address, branches, maxManagers, owner } = req.validated.body;
 
     const existingCompany = await Company.findOne({ name: name.trim() }).lean();
     if (existingCompany) throw httpError(409, 'COMPANY_EXISTS', 'Company name already in use');
@@ -54,6 +71,9 @@ companiesRouter.post('/', authorize(Roles.SuperAdmin), validate(createCompanySch
     const company = await Company.create({
       name,
       address: address || '',
+      branches: Array.isArray(branches) && branches.length > 0 ? branches : [
+        { name: 'Main Branch', code: 'MAIN', address: address || '', units: [{ name: 'Unit 1', description: 'Primary Treatment Unit' }] }
+      ],
       maxManagers: {
         total: parsedLimit,
         manager1: parsedLimit,
@@ -78,17 +98,6 @@ companiesRouter.post('/', authorize(Roles.SuperAdmin), validate(createCompanySch
     company.owner = ownerUser._id;
     await company.save();
 
-    await logAudit({
-      userId: req.user.id,
-      userEmail: req.user.email,
-      companyId: company._id,
-      action: 'COMPANY_CREATE',
-      resource: 'company',
-      resourceId: String(company._id),
-      details: { name: company.name, ownerEmail: owner.email },
-      ipAddress: req.ip,
-    });
-
     res.status(201).json({
       ok: true,
       data: {
@@ -96,6 +105,7 @@ companiesRouter.post('/', authorize(Roles.SuperAdmin), validate(createCompanySch
           id: String(company._id),
           name: company.name,
           address: company.address,
+          branches: company.branches,
           maxManagers: company.maxManagers,
           ownerId: String(company.owner),
         },
@@ -116,6 +126,7 @@ companiesRouter.get('/', authorize(Roles.SuperAdmin), async (req, res, next) => 
         id: String(c._id),
         name: c.name,
         address: c.address || '',
+        branches: c.branches || [],
         maxManagers: {
           total: c.maxManagers?.total ?? (typeof c.maxManagers === 'number' ? c.maxManagers : (c.maxManagers?.manager1 ?? 2)),
           manager1: c.maxManagers?.manager1 ?? 2,
@@ -139,6 +150,7 @@ companiesRouter.get('/me', authorize(Roles.Company, Roles.Manager, Roles.Manager
         id: String(company._id),
         name: company.name,
         address: company.address || '',
+        branches: company.branches || [],
         maxManagers: {
           total: company.maxManagers?.total ?? (typeof company.maxManagers === 'number' ? company.maxManagers : (company.maxManagers?.manager1 ?? 2)),
           manager1: company.maxManagers?.manager1 ?? 2,
@@ -147,6 +159,110 @@ companiesRouter.get('/me', authorize(Roles.Company, Roles.Manager, Roles.Manager
         ownerId: company.owner ? String(company.owner) : null,
       },
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// SuperAdmin adds a branch to a company
+const addBranchSchema = z.object({
+  body: z.object({
+    name: z.string().min(1).max(200),
+    code: z.string().max(50).optional(),
+    address: z.string().max(500).optional(),
+    units: z.array(z.object({
+      name: z.string().min(1).max(200),
+      description: z.string().max(500).optional(),
+    })).optional(),
+  }),
+});
+
+companiesRouter.post('/:id/branches', authorize(Roles.SuperAdmin), validate(addBranchSchema), async (req, res, next) => {
+  try {
+    const company = await Company.findById(req.params.id);
+    if (!company) throw httpError(404, 'COMPANY_NOT_FOUND', 'Company not found');
+
+    const { name, code, address, units } = req.validated.body;
+    const existing = company.branches.find((b) => b.name.toLowerCase() === name.trim().toLowerCase());
+    if (existing) throw httpError(409, 'BRANCH_EXISTS', 'A branch with this name already exists in this company');
+
+    company.branches.push({
+      name: name.trim(),
+      code: (code || '').trim(),
+      address: (address || '').trim(),
+      units: Array.isArray(units) && units.length > 0 ? units : [{ name: 'Unit 1', description: 'Default Unit' }],
+    });
+
+    await company.save();
+    res.status(201).json({ ok: true, data: company.branches });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// SuperAdmin deletes a branch
+companiesRouter.delete('/:id/branches/:branchName', authorize(Roles.SuperAdmin), async (req, res, next) => {
+  try {
+    const company = await Company.findById(req.params.id);
+    if (!company) throw httpError(404, 'COMPANY_NOT_FOUND', 'Company not found');
+
+    const bName = decodeURIComponent(req.params.branchName).trim().toLowerCase();
+    company.branches = company.branches.filter((b) => b.name.toLowerCase() !== bName);
+    await company.save();
+    res.json({ ok: true, data: company.branches });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// SuperAdmin adds a unit to a branch
+const addUnitSchema = z.object({
+  body: z.object({
+    name: z.string().min(1).max(200),
+    description: z.string().max(500).optional(),
+  }),
+});
+
+companiesRouter.post('/:id/branches/:branchName/units', authorize(Roles.SuperAdmin), validate(addUnitSchema), async (req, res, next) => {
+  try {
+    const company = await Company.findById(req.params.id);
+    if (!company) throw httpError(404, 'COMPANY_NOT_FOUND', 'Company not found');
+
+    const bName = decodeURIComponent(req.params.branchName).trim().toLowerCase();
+    const branch = company.branches.find((b) => b.name.toLowerCase() === bName);
+    if (!branch) throw httpError(404, 'BRANCH_NOT_FOUND', 'Branch not found');
+
+    const { name, description } = req.validated.body;
+    const existing = branch.units.find((u) => u.name.toLowerCase() === name.trim().toLowerCase());
+    if (existing) throw httpError(409, 'UNIT_EXISTS', 'A unit with this name already exists in this branch');
+
+    branch.units.push({
+      name: name.trim(),
+      description: (description || '').trim(),
+    });
+
+    await company.save();
+    res.status(201).json({ ok: true, data: branch.units });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// SuperAdmin deletes a unit from a branch
+companiesRouter.delete('/:id/branches/:branchName/units/:unitName', authorize(Roles.SuperAdmin), async (req, res, next) => {
+  try {
+    const company = await Company.findById(req.params.id);
+    if (!company) throw httpError(404, 'COMPANY_NOT_FOUND', 'Company not found');
+
+    const bName = decodeURIComponent(req.params.branchName).trim().toLowerCase();
+    const branch = company.branches.find((b) => b.name.toLowerCase() === bName);
+    if (!branch) throw httpError(404, 'BRANCH_NOT_FOUND', 'Branch not found');
+
+    const uName = decodeURIComponent(req.params.unitName).trim().toLowerCase();
+    branch.units = branch.units.filter((u) => u.name.toLowerCase() !== uName);
+
+    await company.save();
+    res.json({ ok: true, data: branch.units });
   } catch (err) {
     next(err);
   }

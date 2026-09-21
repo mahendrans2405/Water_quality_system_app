@@ -95,12 +95,28 @@ async function normalizeLegacyCompanies() {
           manager2: Math.floor(total / 2) || 2,
         };
       }
+      if (!Array.isArray(c.branches) || c.branches.length === 0) {
+        update.branches = [
+          { name: 'Main Branch', code: 'MAIN', address: c.address || '', units: [{ name: 'Unit 1', description: 'Primary Treatment Unit' }] }
+        ];
+      }
       if (Object.keys(update).length > 0) {
         await Company.collection.updateOne({ _id: c._id }, { $set: update });
       }
     }
+
+    const { Device } = require('../models/Device');
+    const rawDevices = await Device.collection.find({}).toArray();
+    for (const d of rawDevices) {
+      if (!d.branch || !d.unit) {
+        await Device.collection.updateOne(
+          { _id: d._id },
+          { $set: { branch: d.branch || 'Main Branch', unit: d.unit || 'Unit 1' } }
+        );
+      }
+    }
   } catch (err) {
-    console.warn('Company normalization warning:', err?.message || err);
+    console.warn('Company/device normalization warning:', err?.message || err);
   }
 }
 

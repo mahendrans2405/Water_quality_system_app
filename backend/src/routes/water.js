@@ -71,7 +71,7 @@ const listSchema = z.object({
 
 waterRouter.get(
   '/readings',
-  authorize(Roles.SuperAdmin, Roles.Company, Roles.Manager1, Roles.Manager2),
+  authorize(Roles.SuperAdmin, Roles.Company, Roles.Manager, Roles.Manager1, Roles.Manager2),
   validate(listSchema),
   async (req, res, next) => {
     try {

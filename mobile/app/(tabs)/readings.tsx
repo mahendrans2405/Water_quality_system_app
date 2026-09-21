@@ -180,7 +180,7 @@ export default function ReadingsScreen() {
                   onPress={() => setSelectedDeviceId(d.id)}
                 >
                   <Text style={[styles.deviceTabText, selectedDeviceId === d.id && styles.deviceTabTextActive]}>
-                    {d.name || d.deviceId}
+                    {d.name || d.deviceId} {d.branch ? `(🌿 ${d.branch})` : ''}
                   </Text>
                 </TouchableOpacity>
               ))}

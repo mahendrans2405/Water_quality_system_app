@@ -3,7 +3,7 @@ const { z } = require('zod');
 
 const { Permissions } = require('../constants/permissions');
 const { Roles } = require('../constants/roles');
-const { requireAuth, requirePermission, requireCompanyScope } = require('../middleware/auth');
+const { requireAuth, requirePermission, requireCompanyScope, authorize } = require('../middleware/auth');
 const { validate } = require('../middleware/validate');
 const { Device, User } = require('../models');
 const { httpError } = require('../utils/httpError');
@@ -25,6 +25,8 @@ function sanitizeDevice(d) {
     deviceType: d.deviceType || 'Water Quality Monitor',
     channelId: d.channelId,
     hasReadKey: Boolean(d.readKey),
+    branch: d.branch || '',
+    unit: d.unit || '',
     location: d.location || '',
     status: d.status || 'No Recent Data',
     lastDataReceived: d.lastDataReceived || null,
@@ -44,6 +46,8 @@ function sanitizeDevice(d) {
 const listSchema = z.object({
   query: z.object({
     companyId: z.string().optional(),
+    branch: z.string().optional(),
+    unit: z.string().optional(),
     status: z.enum(['Online', 'Offline', 'Warning', 'No Recent Data']).optional(),
   }),
 });
@@ -57,15 +61,25 @@ devicesRouter.get(
   async (req, res, next) => {
     try {
       const filter = {};
+      const { branch, unit, status } = req.validated.query;
 
       if (req.user.role === Roles.SuperAdmin) {
-        if (req.targetCompanyId) filter.company = req.targetCompanyId;
-      } else {
+        const cId = req.validated.query.companyId || req.targetCompanyId;
+        if (cId) filter.company = cId;
+        if (branch) filter.branch = branch;
+        if (unit) filter.unit = unit;
+      } else if (req.user.role === Roles.Company) {
         filter.company = req.user.companyId;
-
-        // If user is a Manager with specifically assigned devices, only return assigned devices
-        const isManager = req.user.role === Roles.Manager || req.user.role === Roles.Manager1 || req.user.role === Roles.Manager2;
-        if (isManager) {
+        if (branch) filter.branch = branch;
+        if (unit) filter.unit = unit;
+      } else {
+        // Manager role: strictly scoped to company and assigned branch/unit/devices
+        filter.company = req.user.companyId;
+        if (req.user.branch) filter.branch = req.user.branch;
+        if (req.user.unit) filter.unit = req.user.unit;
+        if (Array.isArray(req.user.assignedDevices) && req.user.assignedDevices.length > 0) {
+          filter._id = { $in: req.user.assignedDevices };
+        } else {
           const assignedCount = await Device.countDocuments({ company: req.user.companyId, assignedManager: req.user.id });
           if (assignedCount > 0) {
             filter.assignedManager = req.user.id;
@@ -73,8 +87,8 @@ devicesRouter.get(
         }
       }
 
-      if (req.validated.query.status) {
-        filter.status = req.validated.query.status;
+      if (status) {
+        filter.status = status;
       }
 
       const devices = await Device.find(filter)
@@ -134,7 +148,9 @@ const createDeviceSchema = z.object({
     channelId: z.string().min(1).max(200),
     readKey: z.string().min(1).max(200),
     writeKey: z.string().max(200).optional(),
-    companyId: z.string().min(1).optional(),
+    companyId: z.string().min(1),
+    branch: z.string().max(200).optional(),
+    unit: z.string().max(200).optional(),
     location: z.string().max(200).optional(),
     assignedManager: z.string().nullable().optional(),
     offlineThresholdMinutes: z.number().int().min(1).max(1440).optional(),
@@ -142,11 +158,10 @@ const createDeviceSchema = z.object({
   }),
 });
 
-// POST /api/devices - Create device
+// POST /api/devices - Create device (SuperAdmin ONLY)
 devicesRouter.post(
   '/',
-  requirePermission(Permissions.DEVICES_MANAGE),
-  requireCompanyScope,
+  authorize(Roles.SuperAdmin),
   validate(createDeviceSchema),
   async (req, res, next) => {
     try {
@@ -157,16 +172,14 @@ devicesRouter.post(
         channelId,
         readKey,
         writeKey,
-        companyId: requestedCompanyId,
+        companyId,
+        branch,
+        unit,
         location,
         assignedManager,
         offlineThresholdMinutes,
         fieldMappings,
       } = req.validated.body;
-
-      const companyId = req.user.role === Roles.SuperAdmin
-        ? requestedCompanyId || req.targetCompanyId
-        : req.user.companyId;
 
       if (!companyId) throw httpError(400, 'COMPANY_REQUIRED', 'Company is required');
 
@@ -184,24 +197,14 @@ devicesRouter.post(
         channelId: channelId.trim(),
         readKey: readKey.trim(),
         writeKey: writeKey ? writeKey.trim() : '',
+        branch: (branch || '').trim(),
+        unit: (unit || '').trim(),
         location: (location || '').trim(),
         assignedManager: assignedManager || null,
         offlineThresholdMinutes: offlineThresholdMinutes || 30,
         fieldMappings: fieldMappings && fieldMappings.length > 0 ? fieldMappings : undefined,
         createdBy: req.user.id,
         isActive: true,
-      });
-
-      // Audit Log
-      await logAudit({
-        userId: req.user.id,
-        userEmail: req.user.email,
-        companyId,
-        action: 'DEVICE_CREATE',
-        resource: 'device',
-        resourceId: String(device._id),
-        details: { deviceId: device.deviceId, name: device.name, channelId: device.channelId },
-        ipAddress: req.ip,
       });
 
       res.status(201).json({
@@ -223,6 +226,8 @@ const updateDeviceSchema = z.object({
     channelId: z.string().min(1).max(200).optional(),
     readKey: z.string().min(1).max(200).optional(),
     writeKey: z.string().max(200).optional(),
+    branch: z.string().max(200).optional(),
+    unit: z.string().max(200).optional(),
     location: z.string().max(200).optional(),
     assignedManager: z.string().nullable().optional(),
     offlineThresholdMinutes: z.number().int().min(1).max(1440).optional(),
@@ -231,19 +236,15 @@ const updateDeviceSchema = z.object({
   }),
 });
 
-// PUT /api/devices/:id - Update device
+// PUT /api/devices/:id - Update device (SuperAdmin ONLY)
 devicesRouter.put(
   '/:id',
-  requirePermission(Permissions.DEVICES_MANAGE),
+  authorize(Roles.SuperAdmin),
   validate(updateDeviceSchema),
   async (req, res, next) => {
     try {
       const device = await Device.findById(req.validated.params.id);
       if (!device) throw httpError(404, 'DEVICE_NOT_FOUND', 'Device not found');
-
-      if (req.user.role !== Roles.SuperAdmin && String(device.company) !== req.user.companyId) {
-        throw httpError(403, 'FORBIDDEN', 'Cannot edit device outside your company');
-      }
 
       const body = req.validated.body;
       if (body.deviceId) device.deviceId = body.deviceId.trim();
@@ -258,6 +259,8 @@ devicesRouter.put(
         ioTDataService.invalidateCache(device.channelId);
       }
       if (body.writeKey !== undefined) device.writeKey = body.writeKey.trim();
+      if (body.branch !== undefined) device.branch = body.branch.trim();
+      if (body.unit !== undefined) device.unit = body.unit.trim();
       if (body.location !== undefined) device.location = body.location.trim();
       if (body.assignedManager !== undefined) device.assignedManager = body.assignedManager || null;
       if (body.offlineThresholdMinutes !== undefined) device.offlineThresholdMinutes = body.offlineThresholdMinutes;
@@ -265,18 +268,6 @@ devicesRouter.put(
       if (typeof body.isActive === 'boolean') device.isActive = body.isActive;
 
       await device.save();
-
-      // Audit Log
-      await logAudit({
-        userId: req.user.id,
-        userEmail: req.user.email,
-        companyId: device.company,
-        action: 'DEVICE_UPDATE',
-        resource: 'device',
-        resourceId: String(device._id),
-        details: { deviceId: device.deviceId, updatedFields: Object.keys(body) },
-        ipAddress: req.ip,
-      });
 
       res.json({
         ok: true,
@@ -288,33 +279,17 @@ devicesRouter.put(
   }
 );
 
-// DELETE /api/devices/:id - Delete device
+// DELETE /api/devices/:id - Delete device (SuperAdmin ONLY)
 devicesRouter.delete(
   '/:id',
-  requirePermission(Permissions.DEVICES_MANAGE),
+  authorize(Roles.SuperAdmin),
   async (req, res, next) => {
     try {
       const device = await Device.findById(req.params.id);
       if (!device) throw httpError(404, 'DEVICE_NOT_FOUND', 'Device not found');
 
-      if (req.user.role !== Roles.SuperAdmin && String(device.company) !== req.user.companyId) {
-        throw httpError(403, 'FORBIDDEN', 'Cannot delete device outside your company');
-      }
-
       ioTDataService.invalidateCache(device.channelId);
       await device.deleteOne();
-
-      // Audit Log
-      await logAudit({
-        userId: req.user.id,
-        userEmail: req.user.email,
-        companyId: device.company,
-        action: 'DEVICE_DELETE',
-        resource: 'device',
-        resourceId: String(device._id),
-        details: { deviceId: device.deviceId, name: device.name },
-        ipAddress: req.ip,
-      });
 
       res.json({ ok: true, message: 'Device deleted successfully' });
     } catch (err) {

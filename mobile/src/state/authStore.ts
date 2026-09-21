@@ -8,6 +8,9 @@ export type AuthUser = {
   email: string;
   role: RoleName;
   companyId: string | null;
+  branch?: string;
+  unit?: string;
+  assignedDevices?: string[];
   permissions?: string[];
 };
 
@@ -16,6 +19,13 @@ export type CompanyInfo = {
   name: string;
   address?: string;
   ownerId?: string;
+  branches?: Array<{
+    _id?: string;
+    name: string;
+    code?: string;
+    address?: string;
+    units: Array<{ _id?: string; name: string; description?: string }>;
+  }>;
   maxManagers?: {
     total?: number;
     manager1?: number;

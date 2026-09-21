@@ -15,7 +15,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useFocusEffect, useRouter } from 'expo-router';
 
 import { api } from '../../src/api/client';
-import type { DeviceSummary, DeviceLiveResponse, IotSummaryStats } from '../../src/api/types';
+import type { Branch, Company, DeviceLiveResponse, DeviceSummary, IotSummaryStats } from '../../src/api/types';
 import { authStore } from '../../src/state/authStore';
 import { CompanySelector } from '../../components/company-selector';
 import { StatusBadge } from '../../components/ui/status-badge';
@@ -23,18 +23,18 @@ import { StatusBadge } from '../../components/ui/status-badge';
 export default function DashboardScreen() {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
-  const isDesktop = width >= 960;
-  const isTablet = width >= 640 && width < 960;
-  const isMobile = width < 640;
+  const isDesktop = width >= 768;
+  const isMobile = width < 768;
 
   const router = useRouter();
   const user = authStore((s) => s.user);
   const companies = authStore((s) => s.companies);
   const selectedCompanyId = authStore((s) => s.selectedCompanyId);
+  const signOut = authStore((s) => s.signOut);
+
   const isSuperAdmin = user?.role === 'SuperAdmin';
   const isCompanyUser = user?.role === 'Company';
   const isManager = user?.role === 'Manager' || user?.role === 'Manager1' || user?.role === 'Manager2';
-  const canManageDevices = authStore((s) => s.hasPermission('devices.manage'));
 
   const [summaryStats, setSummaryStats] = useState<IotSummaryStats | null>(null);
   const [devices, setDevices] = useState<DeviceSummary[]>([]);
@@ -44,8 +44,28 @@ export default function DashboardScreen() {
   const [error, setError] = useState<string | null>(null);
 
   const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null);
+  const [selectedBranch, setSelectedBranch] = useState<string>('ALL');
+  const [selectedUnit, setSelectedUnit] = useState<string>('ALL');
 
   const targetCompanyId = isSuperAdmin ? selectedCompanyId : user?.companyId || null;
+
+  const activeCompany = useMemo(() => {
+    return (companies as Company[]).find((c) => c.id === targetCompanyId) || null;
+  }, [companies, targetCompanyId]);
+
+  const availableBranches = useMemo<Branch[]>(() => {
+    return activeCompany?.branches || [];
+  }, [activeCompany]);
+
+  const availableUnits = useMemo(() => {
+    if (selectedBranch === 'ALL') {
+      const allUnits = new Set<string>();
+      availableBranches.forEach((b) => b.units?.forEach((u) => allUnits.add(u.name)));
+      return Array.from(allUnits);
+    }
+    const b = availableBranches.find((br) => br.name === selectedBranch);
+    return b?.units?.map((u) => u.name) || [];
+  }, [availableBranches, selectedBranch]);
 
   async function loadDashboardData() {
     if (!targetCompanyId && !isSuperAdmin) return;
@@ -54,23 +74,28 @@ export default function DashboardScreen() {
 
     try {
       // 1. Fetch IoT summary KPIs
-      const summaryRes = await api.get('/api/iot/summary', {
-        params: isSuperAdmin && selectedCompanyId ? { companyId: selectedCompanyId } : undefined,
-      });
+      const summaryParams: any = {};
+      if (isSuperAdmin && selectedCompanyId) summaryParams.companyId = selectedCompanyId;
+      if (selectedBranch !== 'ALL') summaryParams.branch = selectedBranch;
+      if (selectedUnit !== 'ALL') summaryParams.unit = selectedUnit;
+
+      const summaryRes = await api.get('/api/iot/summary', { params: summaryParams });
       if (summaryRes.data?.ok) {
         setSummaryStats(summaryRes.data.data);
       }
 
       // 2. Fetch Devices
       setDeviceLoading(true);
-      const devRes = await api.get('/api/devices', {
-        params: isSuperAdmin && selectedCompanyId ? { companyId: selectedCompanyId } : undefined,
-      });
+      const devParams: any = {};
+      if (isSuperAdmin && selectedCompanyId) devParams.companyId = selectedCompanyId;
+      if (selectedBranch !== 'ALL') devParams.branch = selectedBranch;
+      if (selectedUnit !== 'ALL') devParams.unit = selectedUnit;
 
+      const devRes = await api.get('/api/devices', { params: devParams });
       const devList: DeviceSummary[] = devRes.data?.data || [];
       setDevices(devList);
 
-      // 3. Fetch live telemetry for each device via backend IoT service (cached)
+      // 3. Fetch live telemetry for each device
       const liveResults: Record<string, DeviceLiveResponse> = {};
       await Promise.all(
         devList.map(async (dev) => {
@@ -97,19 +122,25 @@ export default function DashboardScreen() {
   useFocusEffect(
     useCallback(() => {
       loadDashboardData();
-      // Auto-poll live sensor telemetry every 15 seconds
       const interval = setInterval(() => {
         loadDashboardData();
       }, 15000);
       return () => clearInterval(interval);
-    }, [selectedCompanyId, user?.companyId, targetCompanyId])
+    }, [selectedCompanyId, user?.companyId, targetCompanyId, selectedBranch, selectedUnit])
   );
 
-
+  // Client-side filtering by branch and unit for instantaneous feedback
+  const filteredDevices = useMemo(() => {
+    return devices.filter((d) => {
+      if (selectedBranch !== 'ALL' && d.branch && d.branch !== selectedBranch) return false;
+      if (selectedUnit !== 'ALL' && d.unit && d.unit !== selectedUnit) return false;
+      return true;
+    });
+  }, [devices, selectedBranch, selectedUnit]);
 
   async function handleDeleteDevice(deviceId: string, deviceName: string) {
-    if (!canManageDevices) {
-      Alert.alert('Access Denied', 'Managers do not have permission to delete devices.');
+    if (!isSuperAdmin) {
+      Alert.alert('Access Denied', 'Only Super Admin has permission to delete devices.');
       return;
     }
 
@@ -137,45 +168,145 @@ export default function DashboardScreen() {
     ]);
   }
 
-  const selectedCompany = companies.find((c) => c.id === selectedCompanyId);
-  const selectedDevice = devices.find((d) => d.id === selectedDeviceId);
-
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
-      <ScrollView contentContainerStyle={[styles.scrollContent, { maxWidth: 1080, width: '100%', alignSelf: 'center', paddingBottom: Math.max(insets.bottom, 24) + 24 }]}>
-        {/* Header Section */}
+      <ScrollView
+        contentContainerStyle={[
+          styles.scrollContent,
+          { maxWidth: 1160, width: '100%', alignSelf: 'center', paddingBottom: Math.max(insets.bottom, 24) + 24 },
+        ]}
+      >
+        {/* Header Section with TOP-RIGHT LOGOUT BUTTON */}
         <View style={styles.header}>
           <View style={styles.headerTop}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.platformTitle}>IoT Water Quality Platform</Text>
+              <Text style={styles.platformTitle}>IoT Water Quality Monitoring</Text>
               <Text style={styles.userSubtitle}>
                 {user?.name} · <Text style={styles.roleTag}>{user?.role}</Text>
+                {user?.branch ? ` · 🌿 ${user.branch}` : ''}
+                {user?.unit ? ` · 🧪 ${user.unit}` : ''}
               </Text>
             </View>
+
+            {/* TOP-RIGHT CORNER LOG OUT BUTTON */}
+            <TouchableOpacity
+              style={styles.headerLogoutBtn}
+              onPress={() => {
+                signOut();
+                router.replace('/login');
+              }}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.headerLogoutBtnText}>🚪 Log Out</Text>
+            </TouchableOpacity>
           </View>
 
           {isSuperAdmin && <CompanySelector />}
 
-          {selectedCompany && (
+          {activeCompany && (
             <View style={styles.activeCompanyBadge}>
               <Text style={styles.activeCompanyText}>
-                Organization: <Text style={{ fontWeight: '700', color: '#0f172a' }}>{selectedCompany.name}</Text>
+                Organization: <Text style={{ fontWeight: '700', color: '#0f172a' }}>{activeCompany.name}</Text>
+                {activeCompany.address ? ` · 📍 ${activeCompany.address}` : ''}
+              </Text>
+            </View>
+          )}
+
+          {/* Manager Assigned Scope Notice */}
+          {isManager && (user?.branch || user?.unit) && (
+            <View style={styles.managerScopeNotice}>
+              <Text style={styles.managerScopeNoticeText}>
+                🔒 Data Isolated View: Restricted to your assigned facility{' '}
+                <Text style={{ fontWeight: '700' }}>
+                  {user.branch ? `[Branch: ${user.branch}]` : ''} {user.unit ? `[Unit: ${user.unit}]` : ''}
+                </Text>
               </Text>
             </View>
           )}
         </View>
 
-        {/* High-Level KPI Cards */}
-        <View style={styles.kpiGrid}>
-          <View style={[styles.kpiCard, isMobile ? styles.kpiCardMobile : styles.kpiCardDesktop, styles.kpiTotal]}>
+        {/* Multi-Branch & Unit Filter Controls (For SuperAdmin and Company users) */}
+        {!isManager && availableBranches.length > 0 && (
+          <View style={styles.filterSectionCard}>
+            <View style={styles.filterGroup}>
+              <Text style={styles.filterLabel}>🌿 Filter by Branch:</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterChipsRow}>
+                <TouchableOpacity
+                  style={[styles.filterChip, selectedBranch === 'ALL' && styles.filterChipActive]}
+                  onPress={() => {
+                    setSelectedBranch('ALL');
+                    setSelectedUnit('ALL');
+                  }}
+                >
+                  <Text style={[styles.filterChipText, selectedBranch === 'ALL' && styles.filterChipTextActive]}>
+                    All Branches ({availableBranches.length})
+                  </Text>
+                </TouchableOpacity>
+
+                {availableBranches.map((b) => {
+                  const isSel = selectedBranch === b.name;
+                  return (
+                    <TouchableOpacity
+                      key={b.name}
+                      style={[styles.filterChip, isSel && styles.filterChipActive]}
+                      onPress={() => {
+                        setSelectedBranch(b.name);
+                        setSelectedUnit('ALL');
+                      }}
+                    >
+                      <Text style={[styles.filterChipText, isSel && styles.filterChipTextActive]}>
+                        🌿 {b.name}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
+
+            {availableUnits.length > 0 && (
+              <View style={[styles.filterGroup, { marginTop: 8 }]}>
+                <Text style={styles.filterLabel}>🧪 Filter by Unit:</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterChipsRow}>
+                  <TouchableOpacity
+                    style={[styles.filterChip, selectedUnit === 'ALL' && styles.filterChipActive]}
+                    onPress={() => setSelectedUnit('ALL')}
+                  >
+                    <Text style={[styles.filterChipText, selectedUnit === 'ALL' && styles.filterChipTextActive]}>
+                      All Units ({availableUnits.length})
+                    </Text>
+                  </TouchableOpacity>
+
+                  {availableUnits.map((u) => {
+                    const isSel = selectedUnit === u;
+                    return (
+                      <TouchableOpacity
+                        key={u}
+                        style={[styles.filterChip, isSel && styles.filterChipActive]}
+                        onPress={() => setSelectedUnit(u)}
+                      >
+                        <Text style={[styles.filterChipText, isSel && styles.filterChipTextActive]}>
+                          🧪 {u}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* High-Level KPI Cards (Responsive: Desktop sleek 4-bar, Mobile 2x2 grid) */}
+        <View style={isDesktop ? styles.kpiGridDesktop : styles.kpiGridMobile}>
+          <View style={[styles.kpiCard, isDesktop ? styles.kpiCardFlex : styles.kpiCardHalf, styles.kpiTotal]}>
             <View style={styles.kpiTopRow}>
               <Text style={styles.kpiIcon}>📡</Text>
               <Text style={styles.kpiLabel}>Total Devices</Text>
             </View>
-            <Text style={styles.kpiValue}>{summaryStats?.totalDevices ?? devices.length}</Text>
+            <Text style={styles.kpiValue}>{summaryStats?.totalDevices ?? filteredDevices.length}</Text>
           </View>
 
-          <View style={[styles.kpiCard, isMobile ? styles.kpiCardMobile : styles.kpiCardDesktop, styles.kpiOnline]}>
+          <View style={[styles.kpiCard, isDesktop ? styles.kpiCardFlex : styles.kpiCardHalf, styles.kpiOnline]}>
             <View style={styles.kpiTopRow}>
               <Text style={styles.kpiIcon}>🟢</Text>
               <Text style={styles.kpiLabel}>Online</Text>
@@ -185,7 +316,7 @@ export default function DashboardScreen() {
             </Text>
           </View>
 
-          <View style={[styles.kpiCard, isMobile ? styles.kpiCardMobile : styles.kpiCardDesktop, styles.kpiWarning]}>
+          <View style={[styles.kpiCard, isDesktop ? styles.kpiCardFlex : styles.kpiCardHalf, styles.kpiWarning]}>
             <View style={styles.kpiTopRow}>
               <Text style={styles.kpiIcon}>⚠️</Text>
               <Text style={styles.kpiLabel}>Warning</Text>
@@ -195,7 +326,7 @@ export default function DashboardScreen() {
             </Text>
           </View>
 
-          <View style={[styles.kpiCard, isMobile ? styles.kpiCardMobile : styles.kpiCardDesktop, styles.kpiOffline]}>
+          <View style={[styles.kpiCard, isDesktop ? styles.kpiCardFlex : styles.kpiCardHalf, styles.kpiOffline]}>
             <View style={styles.kpiTopRow}>
               <Text style={styles.kpiIcon}>🔴</Text>
               <Text style={styles.kpiLabel}>Offline</Text>
@@ -206,15 +337,25 @@ export default function DashboardScreen() {
           </View>
         </View>
 
-        {/* Action Controls */}
-        <View style={[styles.actionsBar, isMobile && styles.actionsBarMobile]}>
-          <Text style={styles.sectionHeaderTitle}>Connected Devices ({devices.length})</Text>
+        {/* Actions Bar */}
+        <View style={styles.actionsBar}>
+          <Text style={styles.sectionHeaderTitle}>
+            Connected Devices ({filteredDevices.length})
+            {selectedBranch !== 'ALL' ? ` · 🌿 ${selectedBranch}` : ''}
+            {selectedUnit !== 'ALL' ? ` · 🧪 ${selectedUnit}` : ''}
+          </Text>
+
           <View style={styles.actionsBtnRow}>
-            <TouchableOpacity style={styles.secondaryBtn} onPress={loadDashboardData} disabled={loading} activeOpacity={0.7}>
+            <TouchableOpacity
+              style={styles.secondaryBtn}
+              onPress={loadDashboardData}
+              disabled={loading}
+              activeOpacity={0.7}
+            >
               <Text style={styles.secondaryBtnText}>{loading ? 'Refreshing...' : '🔄 Refresh'}</Text>
             </TouchableOpacity>
 
-            {canManageDevices && (
+            {isSuperAdmin && (
               <TouchableOpacity
                 style={styles.primaryBtn}
                 onPress={() => router.push('/(tabs)/admin')}
@@ -231,16 +372,18 @@ export default function DashboardScreen() {
         {error && <Text style={styles.errorBanner}>{error}</Text>}
 
         {/* Device Cards List */}
-        {!deviceLoading && devices.length === 0 ? (
+        {!deviceLoading && filteredDevices.length === 0 ? (
           <View style={styles.emptyState}>
             <Text style={styles.emptyIcon}>📡</Text>
             <Text style={styles.emptyTitle}>No Devices Configured</Text>
             <Text style={styles.emptyDesc}>
-              No IoT devices are registered for this company yet. Go to the Admin console to register your first ThingSpeak station.
+              {selectedBranch !== 'ALL' || selectedUnit !== 'ALL'
+                ? 'No devices match the selected branch and unit filters.'
+                : 'No IoT devices are registered for this company yet. Super Admin can register stations in the Admin console.'}
             </Text>
-            {canManageDevices && (
+            {isSuperAdmin && (
               <TouchableOpacity
-                style={[styles.primaryBtn, { marginTop: 8 }]}
+                style={[styles.primaryBtn, { marginTop: 12 }]}
                 onPress={() => router.push('/(tabs)/admin')}
               >
                 <Text style={styles.primaryBtnText}>+ Register Device in Admin ➔</Text>
@@ -248,116 +391,130 @@ export default function DashboardScreen() {
             )}
           </View>
         ) : (
-          devices.map((device) => {
-            const live = deviceLiveMap[device.id];
-            const status = live?.status || device.status || 'No Recent Data';
-            const telemetry = live?.telemetry;
-            const parameters = telemetry?.parameters || {};
-            const isSelected = selectedDeviceId === device.id;
+          <View style={isDesktop ? styles.deviceGridDesktop : styles.deviceGridMobile}>
+            {filteredDevices.map((device) => {
+              const live = deviceLiveMap[device.id];
+              const status = live?.status || device.status || 'No Recent Data';
+              const telemetry = live?.telemetry;
+              const parameters = telemetry?.parameters || {};
+              const isSelected = selectedDeviceId === device.id;
 
-            return (
-              <View key={device.id} style={[styles.deviceCard, isSelected && styles.deviceCardActive]}>
-                {/* Header Row */}
-                <Pressable
-                  style={styles.deviceCardTop}
-                  onPress={() => setSelectedDeviceId((prev) => (prev === device.id ? null : device.id))}
-                >
-                  <View style={{ flex: 1, marginRight: 8 }}>
-                    <View style={styles.titleWithBadge}>
-                      <Text style={styles.deviceCardTitle}>{device.name || device.deviceId}</Text>
-                      <StatusBadge status={status} size="small" />
+              return (
+                <View key={device.id} style={[styles.deviceCard, isSelected && styles.deviceCardActive]}>
+                  {/* Header Row */}
+                  <Pressable
+                    style={styles.deviceCardTop}
+                    onPress={() => setSelectedDeviceId((prev) => (prev === device.id ? null : device.id))}
+                  >
+                    <View style={{ flex: 1, marginRight: 8 }}>
+                      <View style={styles.titleWithBadge}>
+                        <Text style={styles.deviceCardTitle}>{device.name || device.deviceId}</Text>
+                        <StatusBadge status={status} size="small" />
+                      </View>
+                      <View style={styles.branchUnitRow}>
+                        {device.branch ? <Text style={styles.deviceBranchBadge}>🌿 {device.branch}</Text> : null}
+                        {device.unit ? <Text style={styles.deviceUnitBadge}>🧪 {device.unit}</Text> : null}
+                      </View>
+                      <Text style={styles.deviceMeta} numberOfLines={2}>
+                        Hardware ID: {device.deviceId} · Channel: {device.channelId}
+                        {device.location ? ` · 📍 ${device.location}` : ''}
+                      </Text>
                     </View>
-                    <Text style={styles.deviceMeta} numberOfLines={2}>
-                      ID: {device.deviceId} · Channel: {device.channelId}
-                      {device.location ? ` · 📍 ${device.location}` : ''}
-                    </Text>
-                  </View>
 
-                  <View style={styles.expandChevronBadge}>
-                    <Text style={styles.expandChevronText}>{isSelected ? '▲ Less' : '▼ Details'}</Text>
-                  </View>
-                </Pressable>
+                    <View style={styles.expandChevronBadge}>
+                      <Text style={styles.expandChevronText}>{isSelected ? '▲ Less' : '▼ Details'}</Text>
+                    </View>
+                  </Pressable>
 
-                {/* Telemetry Parameter Grid */}
-                <View style={styles.paramGrid}>
-                  {Object.keys(parameters).length > 0 ? (
-                    Object.entries(parameters).map(([paramName, paramData]) => {
-                      const val = paramData.value;
-                      const hasThreshold = paramData.minThreshold !== null || paramData.maxThreshold !== null;
-                      const isAlert =
-                        typeof val === 'number' &&
-                        ((paramData.minThreshold !== null && val < (paramData.minThreshold as number)) ||
-                          (paramData.maxThreshold !== null && val > (paramData.maxThreshold as number)));
+                  {/* Telemetry Parameter Grid */}
+                  <View style={styles.paramGrid}>
+                    {Object.keys(parameters).length > 0 ? (
+                      Object.entries(parameters).map(([paramName, paramData]) => {
+                        const val = paramData.value;
+                        const hasThreshold = paramData.minThreshold !== null || paramData.maxThreshold !== null;
+                        const isAlert =
+                          typeof val === 'number' &&
+                          ((paramData.minThreshold !== null && val < (paramData.minThreshold as number)) ||
+                            (paramData.maxThreshold !== null && val > (paramData.maxThreshold as number)));
 
-                      return (
-                        <View key={paramName} style={[styles.paramBox, isAlert && styles.paramBoxAlert]}>
-                          <Text style={styles.paramLabel}>{paramName}</Text>
-                          <Text style={[styles.paramValue, isAlert && styles.paramValueAlert]}>
-                            {val !== null && val !== undefined ? `${val} ${paramData.unit}` : '--'}
-                          </Text>
-                          {hasThreshold && (
-                            <Text style={styles.thresholdSub}>
-                              Limits: {paramData.minThreshold ?? 0} - {paramData.maxThreshold ?? '∞'} {paramData.unit}
+                        return (
+                          <View key={paramName} style={[styles.paramBox, isAlert && styles.paramBoxAlert]}>
+                            <Text style={styles.paramLabel}>{paramName}</Text>
+                            <Text style={[styles.paramValue, isAlert && styles.paramValueAlert]}>
+                              {val !== null && val !== undefined ? `${val} ${paramData.unit}` : '--'}
                             </Text>
-                          )}
-                        </View>
-                      );
-                    })
-                  ) : (
-                    <View style={styles.noDataBox}>
-                      <Text style={styles.noDataText}>
-                        {live?.isStale ? '⚠️ Showing cached readings' : 'Awaiting sensor feeds from ThingSpeak...'}
+                            {hasThreshold && (
+                              <Text style={styles.thresholdSub}>
+                                Limits: {paramData.minThreshold ?? 0} - {paramData.maxThreshold ?? '∞'} {paramData.unit}
+                              </Text>
+                            )}
+                          </View>
+                        );
+                      })
+                    ) : (
+                      <View style={styles.noDataBox}>
+                        <Text style={styles.noDataText}>
+                          {live?.isStale ? '⚠️ Showing cached readings' : 'Awaiting sensor feeds from ThingSpeak...'}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+
+                  {/* Last Communication Time & SuperAdmin Actions */}
+                  <View style={styles.cardFooter}>
+                    <Text style={styles.lastUpdatedText}>
+                      🕒 Last Received:{' '}
+                      {live?.lastDataReceived || device.lastDataReceived
+                        ? new Date(live?.lastDataReceived || device.lastDataReceived!).toLocaleString()
+                        : 'Never'}
+                    </Text>
+
+                    {isSuperAdmin && (
+                      <View style={styles.cardBtnRow}>
+                        <TouchableOpacity
+                          style={styles.deleteBtn}
+                          onPress={() => handleDeleteDevice(device.id, device.name || device.deviceId)}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={styles.deleteBtnText}>🗑️ Delete</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                  </View>
+
+                  {/* Expanded Device Details */}
+                  {isSelected && (
+                    <View style={styles.expandedDetails}>
+                      <Text style={styles.expandedHeading}>Device Metadata & Isolation Details</Text>
+                      <Text style={styles.detailLine}>
+                        <Text style={{ fontWeight: '600' }}>Branch Assignment:</Text> {device.branch || 'Main Branch'}
+                      </Text>
+                      <Text style={styles.detailLine}>
+                        <Text style={{ fontWeight: '600' }}>Monitoring Unit:</Text> {device.unit || 'Unit 1'}
+                      </Text>
+                      <Text style={styles.detailLine}>
+                        <Text style={{ fontWeight: '600' }}>Device Type:</Text> {device.deviceType}
+                      </Text>
+                      <Text style={styles.detailLine}>
+                        <Text style={{ fontWeight: '600' }}>Assigned Manager:</Text>{' '}
+                        {device.assignedManagerUser
+                          ? `${device.assignedManagerUser.name} (${device.assignedManagerUser.email})`
+                          : 'Accessible to all managers in branch'}
+                      </Text>
+                      <Text style={styles.detailLine}>
+                        <Text style={{ fontWeight: '600' }}>Offline Threshold:</Text>{' '}
+                        {device.offlineThresholdMinutes} minutes
+                      </Text>
+                      <Text style={styles.detailLine}>
+                        <Text style={{ fontWeight: '600' }}>Registered Date:</Text>{' '}
+                        {new Date(device.createdAt).toLocaleDateString()}
                       </Text>
                     </View>
                   )}
                 </View>
-
-                {/* Last Communication Time & Actions */}
-                <View style={[styles.cardFooter, isMobile && styles.cardFooterMobile]}>
-                  <Text style={styles.lastUpdatedText}>
-                    🕒 Last Received:{' '}
-                    {live?.lastDataReceived || device.lastDataReceived
-                      ? new Date(live?.lastDataReceived || device.lastDataReceived!).toLocaleString()
-                      : 'Never'}
-                  </Text>
-
-                  {/* Actions Row */}
-                  <View style={[styles.cardBtnRow, isMobile && styles.cardBtnRowMobile]}>
-                    {canManageDevices && (
-                      <TouchableOpacity
-                        style={styles.deleteBtn}
-                        onPress={() => handleDeleteDevice(device.id, device.name || device.deviceId)}
-                        activeOpacity={0.7}
-                      >
-                        <Text style={styles.deleteBtnText}>🗑️ Delete</Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                </View>
-
-                {/* Expanded Device Details */}
-                {isSelected && (
-                  <View style={styles.expandedDetails}>
-                    <Text style={styles.expandedHeading}>Device Metadata & Configuration</Text>
-                    <Text style={styles.detailLine}>
-                      <Text style={{ fontWeight: '600' }}>Device Type:</Text> {device.deviceType}
-                    </Text>
-                    <Text style={styles.detailLine}>
-                      <Text style={{ fontWeight: '600' }}>Offline Threshold:</Text> {device.offlineThresholdMinutes} minutes
-                    </Text>
-                    <Text style={styles.detailLine}>
-                      <Text style={{ fontWeight: '600' }}>Assigned Manager:</Text>{' '}
-                      {device.assignedManagerUser ? `${device.assignedManagerUser.name} (${device.assignedManagerUser.email})` : 'Unassigned (Accessible to all company managers)'}
-                    </Text>
-                    <Text style={styles.detailLine}>
-                      <Text style={{ fontWeight: '600' }}>Registered Date:</Text>{' '}
-                      {new Date(device.createdAt).toLocaleDateString()}
-                    </Text>
-                  </View>
-                )}
-              </View>
-            );
-          })
+              );
+            })}
+          </View>
         )}
       </ScrollView>
     </SafeAreaView>
@@ -371,7 +528,6 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 16,
-    paddingBottom: 40,
     gap: 16,
   },
   header: {
@@ -401,15 +557,17 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#2563eb',
   },
-  logoutBtn: {
+  headerLogoutBtn: {
     backgroundColor: '#fee2e2',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: '#fca5a5',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
     borderRadius: 8,
   },
-  logoutBtnText: {
+  headerLogoutBtnText: {
     color: '#dc2626',
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '700',
   },
   activeCompanyBadge: {
@@ -424,9 +582,68 @@ const styles = StyleSheet.create({
   activeCompanyText: {
     fontSize: 13,
     color: '#475569',
-    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
   },
-  kpiGrid: {
+  managerScopeNotice: {
+    backgroundColor: '#eff6ff',
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginTop: 2,
+  },
+  managerScopeNoticeText: {
+    fontSize: 12,
+    color: '#1e40af',
+  },
+  // Branch & Unit Filters
+  filterSectionCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    padding: 12,
+  },
+  filterGroup: {
+    gap: 6,
+  },
+  filterLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#475569',
+  },
+  filterChipsRow: {
+    flexDirection: 'row',
+    gap: 6,
+    paddingVertical: 2,
+  },
+  filterChip: {
+    backgroundColor: '#f1f5f9',
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  filterChipActive: {
+    backgroundColor: '#2563eb',
+    borderColor: '#2563eb',
+  },
+  filterChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#475569',
+  },
+  filterChipTextActive: {
+    color: '#fff',
+    fontWeight: '700',
+  },
+  // KPI Grid Desktop & Mobile
+  kpiGridDesktop: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  kpiGridMobile: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 10,
@@ -437,21 +654,19 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     borderColor: '#e2e8f0',
-    padding: 12,
+    padding: 14,
     shadowColor: '#000',
     shadowOpacity: 0.03,
     shadowRadius: 4,
     shadowOffset: { width: 0, height: 1 },
     elevation: 1,
   },
-  kpiCardMobile: {
+  kpiCardFlex: {
+    flex: 1,
+  },
+  kpiCardHalf: {
     width: '48%',
     flexGrow: 1,
-    minWidth: 135,
-  },
-  kpiCardDesktop: {
-    flex: 1,
-    minWidth: 160,
   },
   kpiTotal: {
     borderLeftWidth: 4,
@@ -476,129 +691,67 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   kpiIcon: {
-    fontSize: 14,
+    fontSize: 16,
   },
   kpiLabel: {
-    fontSize: 11,
-    fontWeight: '700',
+    fontSize: 12,
+    fontWeight: '600',
     color: '#64748b',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
   },
   kpiValue: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: '800',
     color: '#0f172a',
-    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
   },
+  // Actions Bar
   actionsBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    gap: 12,
-    marginTop: 4,
+    flexWrap: 'wrap',
+    gap: 8,
   },
-  actionsBarMobile: {
-    flexDirection: 'column',
-    alignItems: 'flex-start',
-    gap: 10,
+  sectionHeaderTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#0f172a',
   },
   actionsBtnRow: {
     flexDirection: 'row',
-    alignItems: 'center',
     gap: 8,
-    flexWrap: 'wrap',
-  },
-  sectionHeaderTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#0f172a',
-    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
-  },
-  primaryBtn: {
-    backgroundColor: '#2563eb',
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    borderRadius: 8,
-  },
-  primaryBtnText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '700',
-    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
+    alignItems: 'center',
   },
   secondaryBtn: {
-    backgroundColor: '#fff',
+    backgroundColor: '#f1f5f9',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 6,
     borderWidth: 1,
     borderColor: '#cbd5e1',
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    borderRadius: 8,
   },
   secondaryBtnText: {
     color: '#334155',
     fontSize: 12,
     fontWeight: '600',
-    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
   },
-  registerFormCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#cbd5e1',
-    padding: 16,
-    gap: 8,
-  },
-  formHeading: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#0f172a',
-  },
-  formSub: {
-    fontSize: 12,
-    color: '#64748b',
-    marginBottom: 8,
-  },
-  fieldLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#475569',
-    marginTop: 4,
-  },
-  textInput: {
-    backgroundColor: '#f8fafc',
-    borderWidth: 1,
-    borderColor: '#cbd5e1',
-    borderRadius: 8,
+  primaryBtn: {
+    backgroundColor: '#2563eb',
     paddingHorizontal: 12,
-    paddingVertical: 8,
-    fontSize: 13,
+    paddingVertical: 7,
+    borderRadius: 6,
   },
-  formGrid: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  saveDeviceBtn: {
-    backgroundColor: '#16a34a',
-    paddingVertical: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  saveDeviceBtnText: {
+  primaryBtnText: {
     color: '#fff',
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '700',
   },
   errorBanner: {
     backgroundColor: '#fee2e2',
-    borderColor: '#fca5a5',
-    borderWidth: 1,
-    color: '#b91c1c',
-    padding: 12,
+    color: '#dc2626',
+    padding: 10,
     borderRadius: 8,
-    fontSize: 13,
+    fontSize: 12,
+    fontWeight: '600',
   },
   emptyState: {
     backgroundColor: '#fff',
@@ -607,10 +760,10 @@ const styles = StyleSheet.create({
     borderColor: '#e2e8f0',
     padding: 32,
     alignItems: 'center',
-    gap: 8,
   },
   emptyIcon: {
-    fontSize: 36,
+    fontSize: 40,
+    marginBottom: 8,
   },
   emptyTitle: {
     fontSize: 16,
@@ -621,25 +774,36 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#64748b',
     textAlign: 'center',
-    maxWidth: 320,
+    marginTop: 4,
+    maxWidth: 400,
+  },
+  // Device Cards Grid
+  deviceGridDesktop: {
+    gap: 16,
+  },
+  deviceGridMobile: {
+    gap: 12,
   },
   deviceCard: {
     backgroundColor: '#fff',
     borderRadius: 12,
     borderWidth: 1,
     borderColor: '#e2e8f0',
-    padding: 14,
+    padding: 16,
     gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.03,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
   },
   deviceCardActive: {
     borderColor: '#2563eb',
-    backgroundColor: '#fafcff',
   },
   deviceCardTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: 10,
+    alignItems: 'flex-start',
   },
   titleWithBadge: {
     flexDirection: 'row',
@@ -651,28 +815,47 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: '#0f172a',
-    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
+  },
+  branchUnitRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: 4,
+  },
+  deviceBranchBadge: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#065f46',
+    backgroundColor: '#d1fae5',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  deviceUnitBadge: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#1e40af',
+    backgroundColor: '#dbeafe',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
   },
   deviceMeta: {
     fontSize: 12,
     color: '#64748b',
-    marginTop: 3,
-    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
+    marginTop: 4,
   },
   expandChevronBadge: {
-    backgroundColor: '#eff6ff',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    backgroundColor: '#f1f5f9',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
     borderRadius: 6,
-    borderWidth: 1,
-    borderColor: '#bfdbfe',
   },
   expandChevronText: {
     fontSize: 11,
-    color: '#1d4ed8',
-    fontWeight: '700',
-    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
+    fontWeight: '600',
+    color: '#475569',
   },
+  // Parameter Grid
   paramGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -680,53 +863,48 @@ const styles = StyleSheet.create({
   },
   paramBox: {
     flex: 1,
-    minWidth: 95,
+    minWidth: 100,
     backgroundColor: '#f8fafc',
     borderRadius: 8,
     borderWidth: 1,
     borderColor: '#e2e8f0',
     padding: 10,
-    alignItems: 'center',
   },
   paramBoxAlert: {
-    backgroundColor: '#fff1f2',
-    borderColor: '#fecdd3',
+    backgroundColor: '#fef2f2',
+    borderColor: '#fca5a5',
   },
   paramLabel: {
     fontSize: 11,
+    fontWeight: '600',
     color: '#64748b',
-    fontWeight: '700',
-    marginBottom: 2,
     textTransform: 'uppercase',
-    letterSpacing: 0.4,
-    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
   },
   paramValue: {
     fontSize: 16,
     fontWeight: '800',
     color: '#0f172a',
-    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
+    marginTop: 2,
   },
   paramValueAlert: {
-    color: '#e11d48',
+    color: '#dc2626',
   },
   thresholdSub: {
-    fontSize: 9,
+    fontSize: 10,
     color: '#94a3b8',
-    marginTop: 3,
-    fontWeight: '500',
-    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
+    marginTop: 2,
   },
   noDataBox: {
-    flex: 1,
-    paddingVertical: 12,
+    backgroundColor: '#f8fafc',
+    padding: 12,
+    borderRadius: 8,
+    width: '100%',
     alignItems: 'center',
   },
   noDataText: {
     fontSize: 12,
-    color: '#94a3b8',
+    color: '#64748b',
     fontStyle: 'italic',
-    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
   },
   cardFooter: {
     flexDirection: 'row',
@@ -734,72 +912,45 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderTopWidth: 1,
     borderTopColor: '#f1f5f9',
-    paddingTop: 10,
+    paddingTop: 8,
+    flexWrap: 'wrap',
     gap: 8,
-  },
-  cardFooterMobile: {
-    flexDirection: 'column',
-    alignItems: 'stretch',
-    gap: 10,
   },
   lastUpdatedText: {
     fontSize: 11,
     color: '#64748b',
-    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
   },
   cardBtnRow: {
     flexDirection: 'row',
-    alignItems: 'center',
     gap: 8,
-  },
-  cardBtnRowMobile: {
-    alignSelf: 'flex-start',
-    flexWrap: 'wrap',
-  },
-  exportBtn: {
-    backgroundColor: '#eff6ff',
-    borderWidth: 1,
-    borderColor: '#bfdbfe',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 6,
-  },
-  exportBtnText: {
-    fontSize: 11,
-    color: '#1d4ed8',
-    fontWeight: '700',
-    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
   },
   deleteBtn: {
     backgroundColor: '#fee2e2',
-    borderWidth: 1,
-    borderColor: '#fca5a5',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
   },
   deleteBtnText: {
-    fontSize: 11,
     color: '#dc2626',
-    fontWeight: '700',
-    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
+    fontSize: 11,
+    fontWeight: '600',
   },
   expandedDetails: {
-    borderTopWidth: 1,
-    borderTopColor: '#e2e8f0',
-    paddingTop: 10,
-    gap: 6,
+    backgroundColor: '#f8fafc',
+    borderRadius: 8,
+    padding: 12,
+    gap: 4,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
   },
   expandedHeading: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#334155',
+    color: '#0f172a',
     marginBottom: 4,
-    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
   },
   detailLine: {
     fontSize: 12,
     color: '#475569',
-    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
   },
 });

@@ -23,6 +23,8 @@ const deviceSchema = new mongoose.Schema(
     readKey: { type: String, required: true, trim: true }, // ThingSpeak Read API Key (never exposed to frontend)
     writeKey: { type: String, default: '', trim: true }, // ThingSpeak Write API Key (optional, server-side only)
     assignedManager: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    branch: { type: String, default: '', trim: true, index: true },
+    unit: { type: String, default: '', trim: true, index: true },
     location: { type: String, default: '', trim: true },
     installationDate: { type: Date, default: null },
     offlineThresholdMinutes: { type: Number, default: 30, min: 1 }, // Minutes before marked Offline
@@ -50,6 +52,8 @@ const deviceSchema = new mongoose.Schema(
 deviceSchema.index({ company: 1, deviceId: 1 }, { unique: true });
 deviceSchema.index({ company: 1, channelId: 1 }, { unique: true });
 deviceSchema.index({ company: 1, assignedManager: 1 });
+deviceSchema.index({ company: 1, branch: 1 });
+deviceSchema.index({ company: 1, branch: 1, unit: 1 });
 
 const Device = mongoose.model('Device', deviceSchema);
 

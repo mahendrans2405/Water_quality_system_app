@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -17,10 +17,9 @@ import { useRouter } from 'expo-router';
 import { api } from '../../src/api/client';
 import { authStore } from '../../src/state/authStore';
 import { CompanySelector } from '../../components/company-selector';
-import { AuditLogViewer } from '../../components/audit-log-viewer';
 import { StatusBadge } from '../../components/ui/status-badge';
 import { DeviceFieldMapper } from '../../components/device-field-mapper';
-import type { DeviceSummary, FieldMapping } from '../../src/api/types';
+import type { Branch, Company, DeviceSummary, FieldMapping, Unit } from '../../src/api/types';
 
 export default function AdminScreen() {
   const insets = useSafeAreaInsets();
@@ -36,21 +35,48 @@ export default function AdminScreen() {
   const signOut = authStore((s) => s.signOut);
 
   const isSuperAdmin = user?.role === 'SuperAdmin';
-  const isCompanyUser = user?.role === 'Company';
-  const canAdmin = isSuperAdmin || isCompanyUser;
 
-  const [activeTab, setActiveTab] = useState<'companies' | 'devices' | 'users' | 'audit' | 'config'>(
-    isSuperAdmin ? 'companies' : canAdmin ? 'devices' : 'config'
-  );
+  // Guard: Strictly SuperAdmin only
+  useEffect(() => {
+    if (user && !isSuperAdmin) {
+      router.replace('/(tabs)/dashboard');
+    }
+  }, [user, isSuperAdmin]);
+
+  const [activeTab, setActiveTab] = useState<'companies' | 'branches' | 'devices' | 'users' | 'config'>('companies');
 
   const [users, setUsers] = useState<any[]>([]);
   const [devices, setDevices] = useState<DeviceSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [devicesLoading, setDevicesLoading] = useState(false);
-  const [configLoading, setConfigLoading] = useState(false);
+  const [branchesLoading, setBranchesLoading] = useState(false);
   const [showDeviceForm, setShowDeviceForm] = useState(false);
-  const [managerForm, setManagerForm] = useState({ name: '', email: '', password: '', roleName: 'Manager' });
+  const [showBranchForm, setShowBranchForm] = useState(false);
+  const [showUnitFormForBranch, setShowUnitFormForBranch] = useState<string | null>(null);
+
   const [error, setError] = useState<string | null>(null);
+
+  // Forms
+  const [newBranchForm, setNewBranchForm] = useState({
+    name: '',
+    code: '',
+    address: '',
+    initialUnit: 'Unit 1',
+  });
+
+  const [newUnitForm, setNewUnitForm] = useState({
+    name: '',
+    description: '',
+  });
+
+  const [managerForm, setManagerForm] = useState({
+    name: '',
+    email: '',
+    password: '',
+    roleName: 'Manager',
+    branch: '',
+    unit: '',
+  });
 
   const [deviceForm, setDeviceForm] = useState<{
     deviceId: string;
@@ -59,6 +85,8 @@ export default function AdminScreen() {
     readKey: string;
     writeKey: string;
     location: string;
+    branch: string;
+    unit: string;
     deviceType: string;
     assignedManager: string;
     fieldMappings: FieldMapping[];
@@ -69,6 +97,8 @@ export default function AdminScreen() {
     readKey: '',
     writeKey: '',
     location: '',
+    branch: '',
+    unit: '',
     deviceType: 'Water Quality Monitor',
     assignedManager: '',
     fieldMappings: [
@@ -81,8 +111,42 @@ export default function AdminScreen() {
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [lastCheckedTime, setLastCheckedTime] = useState<string>('Just now');
 
+  const selectedCompany = useMemo(() => {
+    return (companies as Company[]).find((c) => c.id === selectedCompanyId) || null;
+  }, [companies, selectedCompanyId]);
+
+  const companyBranches = useMemo<Branch[]>(() => {
+    return selectedCompany?.branches || [];
+  }, [selectedCompany]);
+
+  // Set default branch and unit when company branches change
+  useEffect(() => {
+    if (companyBranches.length > 0) {
+      const firstBranch = companyBranches[0];
+      if (!deviceForm.branch || !companyBranches.some((b) => b.name === deviceForm.branch)) {
+        const firstUnit = firstBranch.units?.[0]?.name || 'Unit 1';
+        setDeviceForm((p) => ({ ...p, branch: firstBranch.name, unit: firstUnit }));
+      }
+      if (!managerForm.branch || !companyBranches.some((b) => b.name === managerForm.branch)) {
+        const firstUnit = firstBranch.units?.[0]?.name || 'Unit 1';
+        setManagerForm((p) => ({ ...p, branch: firstBranch.name, unit: firstUnit }));
+      }
+    }
+  }, [companyBranches]);
+
+  async function loadCompanies() {
+    try {
+      const res = await api.get('/api/companies');
+      if (res.data.ok) {
+        setCompanies(res.data.data);
+      }
+    } catch (e: any) {
+      console.warn('Failed to load companies:', e);
+    }
+  }
+
   async function loadUsers(companyId?: string) {
-    const targetCompanyId = companyId || (isCompanyUser ? user?.companyId : selectedCompanyId);
+    const targetCompanyId = companyId || selectedCompanyId;
     setError(null);
     setLoading(true);
     try {
@@ -97,23 +161,35 @@ export default function AdminScreen() {
     }
   }
 
-  async function loadCompanies() {
+  async function loadDevices(companyId?: string) {
+    const targetCompanyId = companyId || selectedCompanyId;
     try {
-      if (isSuperAdmin) {
-        const res = await api.get('/api/companies');
-        if (res.data.ok) {
-          setCompanies(res.data.data);
-        }
-      } else if (isCompanyUser) {
-        const res = await api.get('/api/companies/me');
-        if (res.data.ok && res.data.data) {
-          setCompanies([res.data.data]);
-        }
-      }
+      setDevicesLoading(true);
+      const res = await api.get('/api/devices', {
+        params: targetCompanyId ? { companyId: targetCompanyId } : undefined,
+      });
+      setDevices(res.data?.data || []);
     } catch (e: any) {
-      console.warn('Failed to load companies:', e);
+      console.warn('Failed to load devices in admin:', e);
+    } finally {
+      setDevicesLoading(false);
     }
   }
+
+  useEffect(() => {
+    if (isSuperAdmin) {
+      loadCompanies();
+    }
+  }, [isSuperAdmin]);
+
+  useEffect(() => {
+    if (isSuperAdmin) {
+      loadUsers(selectedCompanyId || undefined);
+      if (selectedCompanyId) {
+        loadDevices(selectedCompanyId);
+      }
+    }
+  }, [selectedCompanyId, isSuperAdmin]);
 
   async function handleCheckForUpdates() {
     setCheckingUpdate(true);
@@ -131,26 +207,134 @@ export default function AdminScreen() {
     }
   }
 
-  async function loadDevices(companyId?: string) {
-    const targetCompanyId = companyId || (isCompanyUser ? user?.companyId : selectedCompanyId);
-    if (!targetCompanyId && !isSuperAdmin) return;
+  // --- BRANCH & UNIT ACTIONS ---
+  async function handleCreateBranch() {
+    if (!selectedCompanyId) {
+      Alert.alert('Error', 'Please select a company first.');
+      return;
+    }
+    if (!newBranchForm.name.trim()) {
+      Alert.alert('Validation', 'Branch name is required.');
+      return;
+    }
 
     try {
-      setDevicesLoading(true);
-      const res = await api.get('/api/devices', {
-        params: targetCompanyId ? { companyId: targetCompanyId } : undefined,
+      setBranchesLoading(true);
+      await api.post(`/api/companies/${selectedCompanyId}/branches`, {
+        name: newBranchForm.name.trim(),
+        code: newBranchForm.code.trim() || undefined,
+        address: newBranchForm.address.trim() || undefined,
+        units: newBranchForm.initialUnit.trim()
+          ? [{ name: newBranchForm.initialUnit.trim(), description: 'Initial Unit' }]
+          : [{ name: 'Unit 1', description: 'Default Unit' }],
       });
-      setDevices(res.data?.data || []);
+
+      setNewBranchForm({ name: '', code: '', address: '', initialUnit: 'Unit 1' });
+      setShowBranchForm(false);
+      await loadCompanies();
+      Alert.alert('Success', 'Branch created successfully.');
     } catch (e: any) {
-      console.warn('Failed to load devices in admin:', e);
+      Alert.alert('Error', e?.response?.data?.error?.message || 'Failed to create branch');
     } finally {
-      setDevicesLoading(false);
+      setBranchesLoading(false);
     }
   }
 
+  async function handleDeleteBranch(branchName: string) {
+    if (!selectedCompanyId) return;
+
+    const confirmed =
+      Platform.OS === 'web'
+        ? window.confirm(`Delete branch "${branchName}"? This branch and its units will be removed.`)
+        : await new Promise((resolve) => {
+            Alert.alert(
+              'Delete Branch',
+              `Are you sure you want to delete branch "${branchName}"?`,
+              [
+                { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+                { text: 'Delete', style: 'destructive', onPress: () => resolve(true) },
+              ]
+            );
+          });
+
+    if (!confirmed) return;
+
+    try {
+      setBranchesLoading(true);
+      await api.delete(`/api/companies/${selectedCompanyId}/branches/${encodeURIComponent(branchName)}`);
+      await loadCompanies();
+      Alert.alert('Success', `Branch "${branchName}" removed.`);
+    } catch (e: any) {
+      Alert.alert('Error', e?.response?.data?.error?.message || 'Failed to delete branch');
+    } finally {
+      setBranchesLoading(false);
+    }
+  }
+
+  async function handleCreateUnit(branchName: string) {
+    if (!selectedCompanyId) return;
+    if (!newUnitForm.name.trim()) {
+      Alert.alert('Validation', 'Unit name is required.');
+      return;
+    }
+
+    try {
+      setBranchesLoading(true);
+      await api.post(
+        `/api/companies/${selectedCompanyId}/branches/${encodeURIComponent(branchName)}/units`,
+        {
+          name: newUnitForm.name.trim(),
+          description: newUnitForm.description.trim() || undefined,
+        }
+      );
+
+      setNewUnitForm({ name: '', description: '' });
+      setShowUnitFormForBranch(null);
+      await loadCompanies();
+      Alert.alert('Success', `Unit added to branch "${branchName}".`);
+    } catch (e: any) {
+      Alert.alert('Error', e?.response?.data?.error?.message || 'Failed to add unit');
+    } finally {
+      setBranchesLoading(false);
+    }
+  }
+
+  async function handleDeleteUnit(branchName: string, unitName: string) {
+    if (!selectedCompanyId) return;
+
+    const confirmed =
+      Platform.OS === 'web'
+        ? window.confirm(`Delete unit "${unitName}" from branch "${branchName}"?`)
+        : await new Promise((resolve) => {
+            Alert.alert(
+              'Delete Unit',
+              `Are you sure you want to delete unit "${unitName}"?`,
+              [
+                { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+                { text: 'Delete', style: 'destructive', onPress: () => resolve(true) },
+              ]
+            );
+          });
+
+    if (!confirmed) return;
+
+    try {
+      setBranchesLoading(true);
+      await api.delete(
+        `/api/companies/${selectedCompanyId}/branches/${encodeURIComponent(branchName)}/units/${encodeURIComponent(unitName)}`
+      );
+      await loadCompanies();
+      Alert.alert('Success', `Unit "${unitName}" deleted.`);
+    } catch (e: any) {
+      Alert.alert('Error', e?.response?.data?.error?.message || 'Failed to delete unit');
+    } finally {
+      setBranchesLoading(false);
+    }
+  }
+
+  // --- DEVICE ACTIONS ---
   async function handleCreateDevice() {
-    const targetCompanyId = isCompanyUser ? user?.companyId : selectedCompanyId;
-    if (!targetCompanyId) {
+    if (!selectedCompanyId) {
       Alert.alert('Selection Error', 'Please select a company organization first.');
       return;
     }
@@ -169,9 +353,11 @@ export default function AdminScreen() {
         readKey: deviceForm.readKey.trim(),
         writeKey: deviceForm.writeKey.trim() || undefined,
         deviceType: deviceForm.deviceType.trim(),
+        branch: deviceForm.branch.trim() || undefined,
+        unit: deviceForm.unit.trim() || undefined,
         location: deviceForm.location.trim() || undefined,
         assignedManager: deviceForm.assignedManager || undefined,
-        companyId: targetCompanyId,
+        companyId: selectedCompanyId,
         fieldMappings: deviceForm.fieldMappings,
       });
 
@@ -183,6 +369,8 @@ export default function AdminScreen() {
           readKey: '',
           writeKey: '',
           location: '',
+          branch: companyBranches[0]?.name || '',
+          unit: companyBranches[0]?.units?.[0]?.name || '',
           deviceType: 'Water Quality Monitor',
           assignedManager: '',
           fieldMappings: [
@@ -192,10 +380,10 @@ export default function AdminScreen() {
           ],
         });
         setShowDeviceForm(false);
-        await loadDevices(targetCompanyId);
+        await loadDevices(selectedCompanyId);
         Alert.alert(
           'Device Registered Successfully!',
-          'Device is now active. Its sensor parameters, thresholds, and live telemetry will automatically stream on the Dashboard.'
+          'Device is assigned to company, branch, and unit. Telemetry will automatically stream on the Dashboard.'
         );
       }
     } catch (e: any) {
@@ -206,7 +394,6 @@ export default function AdminScreen() {
   }
 
   async function handleDeleteDevice(deviceId: string, deviceName: string) {
-    const targetCompanyId = isCompanyUser ? user?.companyId : selectedCompanyId;
     const confirmed =
       Platform.OS === 'web'
         ? window.confirm(`Are you sure you want to delete device ${deviceName}?`)
@@ -222,7 +409,7 @@ export default function AdminScreen() {
     try {
       setDevicesLoading(true);
       await api.delete(`/api/devices/${deviceId}`);
-      await loadDevices(targetCompanyId || undefined);
+      await loadDevices(selectedCompanyId || undefined);
       Alert.alert('Device Deleted', `Device ${deviceName} has been removed.`);
     } catch (e: any) {
       Alert.alert('Error', e?.response?.data?.error?.message || 'Failed to delete device');
@@ -231,62 +418,59 @@ export default function AdminScreen() {
     }
   }
 
-  useEffect(() => {
-    if (canAdmin) {
-      loadCompanies();
-    }
-  }, [canAdmin, isSuperAdmin, isCompanyUser]);
-
-  useEffect(() => {
-    const targetId = isCompanyUser ? user?.companyId : selectedCompanyId;
-    if (canAdmin) {
-      loadUsers(targetId || undefined);
-      if (targetId) {
-        loadDevices(targetId);
-      }
-    }
-  }, [selectedCompanyId, user?.companyId, canAdmin, isCompanyUser]);
-
+  // --- MANAGER ACTIONS ---
   async function handleCreateManager() {
-    const targetCompanyId = isCompanyUser ? user?.companyId : selectedCompanyId;
-    if (!targetCompanyId) {
+    if (!selectedCompanyId) {
       Alert.alert('Selection Error', 'Please select a company first.');
       return;
     }
 
-    const currentCompany = companies.find((c) => c.id === targetCompanyId);
-    const managerLimit = typeof currentCompany?.maxManagers === 'number'
-      ? currentCompany.maxManagers
-      : (currentCompany?.maxManagers?.total ?? currentCompany?.maxManagers?.manager1 ?? 2);
+    const currentCompany = (companies as Company[]).find((c) => c.id === selectedCompanyId);
+    const managerLimit =
+      typeof currentCompany?.maxManagers === 'number'
+        ? currentCompany.maxManagers
+        : (currentCompany?.maxManagers?.total ?? currentCompany?.maxManagers?.manager1 ?? 2);
     const currentManagers = users.filter(
       (u) => (u.role?.toLowerCase() === 'manager' || u.role?.toLowerCase().includes('manager')) && u.isActive !== false
     );
     if (currentManagers.length >= managerLimit) {
       Alert.alert(
         'Manager Limit Reached',
-        `Maximum manager quota reached for this organization (${currentManagers.length}/${managerLimit}). Delete an existing manager or contact SuperAdmin to increase the limit.`
+        `Maximum manager quota reached for this organization (${currentManagers.length}/${managerLimit}). Increase the quota or delete an existing manager.`
       );
       return;
     }
 
     if (!managerForm.name.trim() || !managerForm.email.trim() || !managerForm.password) {
-      Alert.alert('Validation', 'Name, email, and password are required.');
+      Alert.alert('Validation', 'Name, email (Manager User ID), and password are required.');
       return;
     }
 
     try {
       const res = await api.post('/api/users', {
         name: managerForm.name.trim(),
-        email: managerForm.email.trim(),
+        email: managerForm.email.trim().toLowerCase(),
         password: managerForm.password,
         roleName: managerForm.roleName,
-        companyId: targetCompanyId,
+        companyId: selectedCompanyId,
+        branch: managerForm.branch.trim() || undefined,
+        unit: managerForm.unit.trim() || undefined,
       });
 
       if (res.data?.ok) {
-        setManagerForm({ name: '', email: '', password: '', roleName: 'Manager' });
-        await loadUsers(targetCompanyId);
-        Alert.alert('Success', `Manager account created for ${managerForm.email}`);
+        setManagerForm({
+          name: '',
+          email: '',
+          password: '',
+          roleName: 'Manager',
+          branch: companyBranches[0]?.name || '',
+          unit: companyBranches[0]?.units?.[0]?.name || '',
+        });
+        await loadUsers(selectedCompanyId);
+        Alert.alert(
+          'Success',
+          `Manager account created!\n\nUser ID: ${managerForm.email}\nBranch: ${managerForm.branch || 'All'}\nUnit: ${managerForm.unit || 'All'}\n\nProvide these credentials to the company manager. They will have strictly view-only access to their assigned branch, unit, and devices.`
+        );
       }
     } catch (e: any) {
       Alert.alert('Error', e?.response?.data?.error?.message ?? 'Failed to create manager');
@@ -308,7 +492,7 @@ export default function AdminScreen() {
 
     try {
       await api.delete(`/api/users/${userId}`);
-      await loadUsers();
+      await loadUsers(selectedCompanyId || undefined);
       Alert.alert('Success', 'User deleted.');
     } catch (e: any) {
       Alert.alert('Error', e?.response?.data?.error?.message ?? 'Failed to delete user');
@@ -318,7 +502,7 @@ export default function AdminScreen() {
   async function handleDeleteCompany(companyId: string, companyName: string) {
     const confirmed =
       Platform.OS === 'web'
-        ? window.confirm(`Delete company ${companyName}? This removes all company users, devices, and data.`)
+        ? window.confirm(`Delete company ${companyName}? This removes all company users, devices, branches, and telemetry.`)
         : await new Promise((resolve) => {
             Alert.alert(
               'Delete Company',
@@ -344,38 +528,71 @@ export default function AdminScreen() {
     }
   }
 
+  if (!user || !isSuperAdmin) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 }}>
+          <ActivityIndicator size="large" color="#2563eb" />
+          <Text style={{ marginTop: 12, color: '#64748b' }}>Redirecting to Dashboard...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
-      <ScrollView contentContainerStyle={[styles.scrollContent, { maxWidth: 1080, width: '100%', alignSelf: 'center', paddingBottom: Math.max(insets.bottom, 24) + 24 }]}>
+      <ScrollView
+        contentContainerStyle={[
+          styles.scrollContent,
+          { maxWidth: 1080, width: '100%', alignSelf: 'center', paddingBottom: Math.max(insets.bottom, 24) + 24 },
+        ]}
+      >
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.headerTop}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.title}>{canAdmin ? 'Administration Console' : 'Settings'}</Text>
+              <Text style={styles.title}>Super Admin Console</Text>
               <Text style={styles.userInfo}>
-                Logged in as: {user?.name} ({user?.role})
+                System Administrator: {user.name} ({user.email})
               </Text>
             </View>
+            <TouchableOpacity
+              style={styles.headerLogoutBtn}
+              onPress={() => {
+                signOut();
+                router.replace('/login');
+              }}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.headerLogoutBtnText}>🚪 Log Out</Text>
+            </TouchableOpacity>
           </View>
 
-          {isSuperAdmin && <CompanySelector />}
+          <CompanySelector />
         </View>
 
-        {/* Section Navigation Tabs (Only for Admin users) */}
-        {canAdmin && (
-          <View style={styles.navTabsWrapper}>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.navTabs}>
-            {isSuperAdmin && (
-              <TouchableOpacity
-                style={[styles.navTab, activeTab === 'companies' && styles.navTabActive]}
-                onPress={() => setActiveTab('companies')}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.navTabText, activeTab === 'companies' && styles.navTabTextActive]}>
-                  🏢 Companies
-                </Text>
-              </TouchableOpacity>
-            )}
+        {/* Section Navigation Tabs (Super Admin Only) */}
+        <View style={styles.navTabsWrapper}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.navTabs}>
+            <TouchableOpacity
+              style={[styles.navTab, activeTab === 'companies' && styles.navTabActive]}
+              onPress={() => setActiveTab('companies')}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.navTabText, activeTab === 'companies' && styles.navTabTextActive]}>
+                🏢 Companies ({companies.length})
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.navTab, activeTab === 'branches' && styles.navTabActive]}
+              onPress={() => setActiveTab('branches')}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.navTabText, activeTab === 'branches' && styles.navTabTextActive]}>
+                🌿 Branches & Units ({companyBranches.length})
+              </Text>
+            </TouchableOpacity>
 
             <TouchableOpacity
               style={[styles.navTab, activeTab === 'devices' && styles.navTabActive]}
@@ -383,7 +600,7 @@ export default function AdminScreen() {
               activeOpacity={0.7}
             >
               <Text style={[styles.navTabText, activeTab === 'devices' && styles.navTabTextActive]}>
-                📡 IoT Devices ({devices.length})
+                📡 Devices ({devices.length})
               </Text>
             </TouchableOpacity>
 
@@ -393,17 +610,7 @@ export default function AdminScreen() {
               activeOpacity={0.7}
             >
               <Text style={[styles.navTabText, activeTab === 'users' && styles.navTabTextActive]}>
-                👥 Users & Managers
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.navTab, activeTab === 'audit' && styles.navTabActive]}
-              onPress={() => setActiveTab('audit')}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.navTabText, activeTab === 'audit' && styles.navTabTextActive]}>
-                📋 Audit Trail
+                👥 Managers & Quotas
               </Text>
             </TouchableOpacity>
 
@@ -413,23 +620,24 @@ export default function AdminScreen() {
               activeOpacity={0.7}
             >
               <Text style={[styles.navTabText, activeTab === 'config' && styles.navTabTextActive]}>
-                ⚙️ Settings
+                ⚙️ Settings & System
               </Text>
             </TouchableOpacity>
           </ScrollView>
         </View>
-      )}
 
-        {/* TAB 1: Companies (SuperAdmin only) */}
-        {activeTab === 'companies' && isSuperAdmin && (
+        {/* TAB 1: Companies */}
+        {activeTab === 'companies' && (
           <View style={styles.sectionCard}>
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Client Organizations ({companies.length})</Text>
+              <View>
+                <Text style={styles.sectionTitle}>Client Organizations ({companies.length})</Text>
+                <Text style={styles.formSubtitle}>
+                  Manage tenant companies, branches, and manager quotas.
+                </Text>
+              </View>
               <View style={{ flexDirection: 'row', gap: 8 }}>
-                <TouchableOpacity
-                  style={styles.createBtn}
-                  onPress={() => router.push('/modal')}
-                >
+                <TouchableOpacity style={styles.createBtn} onPress={() => router.push('/modal')}>
                   <Text style={styles.createBtnText}>+ Create Company</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.refreshBtn} onPress={loadCompanies}>
@@ -440,6 +648,13 @@ export default function AdminScreen() {
 
             {companies.map((c) => {
               const isSelected = selectedCompanyId === c.id;
+              const bCount = c.branches?.length || 0;
+              const totalUnits = c.branches?.reduce((acc: number, b: any) => acc + (b.units?.length || 0), 0) || 0;
+              const mgrLimit =
+                typeof c.maxManagers === 'number'
+                  ? c.maxManagers
+                  : (c.maxManagers?.total ?? c.maxManagers?.manager1 ?? 2);
+
               return (
                 <View key={c.id} style={[styles.companyCard, isSelected && styles.companyCardActive]}>
                   <View style={styles.companyCardHeader}>
@@ -449,7 +664,7 @@ export default function AdminScreen() {
 
                   {c.address ? <Text style={styles.companyMeta}>📍 {c.address}</Text> : null}
                   <Text style={styles.companyMeta}>
-                    Manager Quota: {typeof c.maxManagers === 'number' ? c.maxManagers : (c.maxManagers?.total ?? c.maxManagers?.manager1 ?? 2)} Max
+                    Branches: <Text style={{ fontWeight: '700' }}>{bCount}</Text> · Units: <Text style={{ fontWeight: '700' }}>{totalUnits}</Text> · Manager Quota: <Text style={{ fontWeight: '700' }}>{mgrLimit} Max</Text>
                   </Text>
 
                   <View style={styles.companyActionsRow}>
@@ -457,10 +672,10 @@ export default function AdminScreen() {
                       style={styles.dashboardLink}
                       onPress={() => {
                         setSelectedCompanyId(c.id);
-                        router.push('/(tabs)/dashboard');
+                        setActiveTab('branches');
                       }}
                     >
-                      <Text style={styles.dashboardLinkText}>Open Dashboard →</Text>
+                      <Text style={styles.dashboardLinkText}>Manage Branches & Units →</Text>
                     </TouchableOpacity>
 
                     <TouchableOpacity
@@ -476,14 +691,198 @@ export default function AdminScreen() {
           </View>
         )}
 
-        {/* TAB: IoT Devices */}
+        {/* TAB 2: Branches & Units Management */}
+        {activeTab === 'branches' && (
+          <View style={styles.sectionCard}>
+            <View style={styles.sectionHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.sectionTitle}>
+                  Branches & Units for {selectedCompany?.name || 'Selected Company'}
+                </Text>
+                <Text style={styles.formSubtitle}>
+                  Organize facilities into branches and monitoring units. Devices and managers will be assigned to specific branches and units.
+                </Text>
+              </View>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <TouchableOpacity
+                  style={styles.createBtn}
+                  onPress={() => setShowBranchForm((p) => !p)}
+                >
+                  <Text style={styles.createBtnText}>
+                    {showBranchForm ? '✕ Cancel' : '+ Add Branch'}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.refreshBtn} onPress={loadCompanies} disabled={branchesLoading}>
+                  <Text style={styles.refreshBtnText}>{branchesLoading ? '...' : '🔄 Refresh'}</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Create Branch Form */}
+            {showBranchForm && (
+              <View style={styles.branchFormBox}>
+                <Text style={styles.formTitle}>Add New Branch</Text>
+                <Text style={styles.formSubtitle}>
+                  Create a physical branch or facility location under {selectedCompany?.name}.
+                </Text>
+
+                <TextInput
+                  style={styles.input}
+                  placeholder="Branch Name (e.g. North Treatment Facility)"
+                  value={newBranchForm.name}
+                  onChangeText={(txt) => setNewBranchForm((p) => ({ ...p, name: txt }))}
+                />
+                <View style={styles.formGrid}>
+                  <View style={{ flex: 1 }}>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Branch Code (e.g. BR-NORTH)"
+                      value={newBranchForm.code}
+                      onChangeText={(txt) => setNewBranchForm((p) => ({ ...p, code: txt }))}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Initial Unit Name (e.g. Intake Unit)"
+                      value={newBranchForm.initialUnit}
+                      onChangeText={(txt) => setNewBranchForm((p) => ({ ...p, initialUnit: txt }))}
+                    />
+                  </View>
+                </View>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Address / Facility Location"
+                  value={newBranchForm.address}
+                  onChangeText={(txt) => setNewBranchForm((p) => ({ ...p, address: txt }))}
+                />
+
+                <TouchableOpacity
+                  style={[styles.saveBranchBtn, branchesLoading && styles.btnDisabled]}
+                  onPress={handleCreateBranch}
+                  disabled={branchesLoading}
+                >
+                  <Text style={styles.saveBranchBtnText}>
+                    {branchesLoading ? 'Adding...' : 'Save Branch'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* List Branches */}
+            {branchesLoading && <ActivityIndicator style={{ marginVertical: 12 }} />}
+
+            {companyBranches.length === 0 ? (
+              <View style={styles.emptyCard}>
+                <Text style={styles.emptyIcon}>🌿</Text>
+                <Text style={styles.emptyTitle}>No Branches Defined</Text>
+                <Text style={styles.emptyDesc}>
+                  Click "+ Add Branch" above to create the first branch location for this company.
+                </Text>
+              </View>
+            ) : (
+              companyBranches.map((branch) => {
+                const isAddingUnit = showUnitFormForBranch === branch.name;
+
+                return (
+                  <View key={branch.name} style={styles.branchCard}>
+                    <View style={styles.branchHeaderRow}>
+                      <View style={{ flex: 1 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                          <Text style={styles.branchTitle}>{branch.name}</Text>
+                          {branch.code ? <Text style={styles.branchCodeBadge}>{branch.code}</Text> : null}
+                        </View>
+                        {branch.address ? (
+                          <Text style={styles.branchAddress}>📍 {branch.address}</Text>
+                        ) : null}
+                      </View>
+
+                      <View style={{ flexDirection: 'row', gap: 8 }}>
+                        <TouchableOpacity
+                          style={styles.addUnitBtn}
+                          onPress={() => setShowUnitFormForBranch(isAddingUnit ? null : branch.name)}
+                        >
+                          <Text style={styles.addUnitBtnText}>
+                            {isAddingUnit ? '✕ Close' : '+ Add Unit'}
+                          </Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          style={styles.deleteBranchBtn}
+                          onPress={() => handleDeleteBranch(branch.name)}
+                        >
+                          <Text style={styles.deleteBranchBtnText}>Delete Branch</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+
+                    {/* Add Unit Form inline */}
+                    {isAddingUnit && (
+                      <View style={styles.unitFormBox}>
+                        <Text style={styles.unitFormTitle}>Add Unit to {branch.name}</Text>
+                        <View style={styles.formGrid}>
+                          <View style={{ flex: 1 }}>
+                            <TextInput
+                              style={styles.input}
+                              placeholder="Unit Name (e.g. Unit 2, Filtration Unit)"
+                              value={newUnitForm.name}
+                              onChangeText={(txt) => setNewUnitForm((p) => ({ ...p, name: txt }))}
+                            />
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <TextInput
+                              style={styles.input}
+                              placeholder="Description (Optional)"
+                              value={newUnitForm.description}
+                              onChangeText={(txt) => setNewUnitForm((p) => ({ ...p, description: txt }))}
+                            />
+                          </View>
+                        </View>
+                        <TouchableOpacity
+                          style={styles.saveUnitBtn}
+                          onPress={() => handleCreateUnit(branch.name)}
+                        >
+                          <Text style={styles.saveUnitBtnText}>Save Unit</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+
+                    {/* Units List */}
+                    <Text style={styles.unitsSectionTitle}>Monitoring Units ({branch.units?.length || 0}):</Text>
+                    <View style={styles.unitChipsRow}>
+                      {branch.units && branch.units.length > 0 ? (
+                        branch.units.map((unit) => (
+                          <View key={unit.name} style={styles.unitBadge}>
+                            <Text style={styles.unitBadgeText}>🧪 {unit.name}</Text>
+                            {branch.units.length > 1 && (
+                              <TouchableOpacity
+                                onPress={() => handleDeleteUnit(branch.name, unit.name)}
+                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                              >
+                                <Text style={styles.unitDeleteCross}>✕</Text>
+                              </TouchableOpacity>
+                            )}
+                          </View>
+                        ))
+                      ) : (
+                        <Text style={styles.emptyUnitsText}>No units registered for this branch.</Text>
+                      )}
+                    </View>
+                  </View>
+                );
+              })
+            )}
+          </View>
+        )}
+
+        {/* TAB 3: IoT Devices (Super Admin Exclusivity) */}
         {activeTab === 'devices' && (
           <View style={styles.sectionCard}>
             <View style={styles.sectionHeader}>
               <View>
                 <Text style={styles.sectionTitle}>IoT Monitoring Devices ({devices.length})</Text>
                 <Text style={styles.formSubtitle}>
-                  Physical sensor hardware stations configured for this organization.
+                  Only Super Admin has permission to add, configure, and manage sensor hardware.
                 </Text>
               </View>
               <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -500,66 +899,77 @@ export default function AdminScreen() {
                   onPress={() => loadDevices()}
                   disabled={devicesLoading}
                 >
-                  <Text style={styles.refreshBtnText}>
-                    {devicesLoading ? '...' : '🔄 Refresh'}
-                  </Text>
+                  <Text style={styles.refreshBtnText}>{devicesLoading ? '...' : '🔄 Refresh'}</Text>
                 </TouchableOpacity>
               </View>
             </View>
 
-            {/* Active Company Banner for SuperAdmin */}
-            {isSuperAdmin && (
-              <View style={styles.activeCompanyBanner}>
-                <Text style={styles.activeCompanyBannerTitle}>🏢 Target Organization for Devices:</Text>
-                <CompanySelector onCompanySelected={(cId) => loadDevices(cId)} />
-              </View>
-            )}
+            {/* Active Company Banner */}
+            <View style={styles.activeCompanyBanner}>
+              <Text style={styles.activeCompanyBannerTitle}>🏢 Target Organization for Devices:</Text>
+              <CompanySelector onCompanySelected={(cId) => loadDevices(cId)} />
+            </View>
 
             {/* Register Device Form */}
             {showDeviceForm && (
               <View style={styles.deviceFormCard}>
                 <Text style={styles.formTitle}>Register New IoT Station</Text>
                 <Text style={styles.formSubtitle}>
-                  Connects to ThingSpeak channel securely. Newly added devices stream telemetry to the Dashboard automatically.
+                  Assign the device to a specific Company, Branch, and Unit to maintain strict isolation.
                 </Text>
 
-                {/* 1. Target Company Selection for SuperAdmin */}
-                {isSuperAdmin && (
-                  <View style={styles.formSectionBox}>
-                    <Text style={styles.inputLabel}>1. Select Target Company Organization *</Text>
-                    <View style={styles.companySelectChipRow}>
-                      {companies.map((c) => {
-                        const isTarget = selectedCompanyId === c.id;
-                        return (
-                          <TouchableOpacity
-                            key={c.id}
-                            style={[styles.companyFormChip, isTarget && styles.companyFormChipActive]}
-                            onPress={() => {
-                              setSelectedCompanyId(c.id);
-                              loadDevices(c.id);
-                            }}
-                            activeOpacity={0.7}
-                          >
-                            <Text style={[styles.companyFormChipText, isTarget && styles.companyFormChipTextActive]}>
-                              🏢 {c.name}
-                            </Text>
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </View>
-                    {selectedCompanyId ? (
-                      <Text style={styles.selectedCompanyHint}>
-                        ✓ Device will be registered under: {companies.find((c) => c.id === selectedCompanyId)?.name}
-                      </Text>
-                    ) : (
-                      <Text style={styles.fieldErrorText}>
-                        ⚠️ Please select a company organization above to register this device to.
-                      </Text>
-                    )}
+                {/* Branch Selection */}
+                <View style={styles.formSectionBox}>
+                  <Text style={styles.inputLabel}>Assign to Branch *</Text>
+                  <View style={styles.companySelectChipRow}>
+                    {companyBranches.map((b) => {
+                      const isSel = deviceForm.branch === b.name;
+                      return (
+                        <TouchableOpacity
+                          key={b.name}
+                          style={[styles.companyFormChip, isSel && styles.companyFormChipActive]}
+                          onPress={() => {
+                            const firstUnit = b.units?.[0]?.name || 'Unit 1';
+                            setDeviceForm((p) => ({ ...p, branch: b.name, unit: firstUnit }));
+                          }}
+                        >
+                          <Text style={[styles.companyFormChipText, isSel && styles.companyFormChipTextActive]}>
+                            🌿 {b.name}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
                   </View>
-                )}
+                </View>
 
-                <Text style={styles.inputLabel}>2. Device ID * (Hardware ID)</Text>
+                {/* Unit Selection */}
+                {(() => {
+                  const currBranch = companyBranches.find((b) => b.name === deviceForm.branch);
+                  const units = currBranch?.units || [];
+                  return (
+                    <View style={styles.formSectionBox}>
+                      <Text style={styles.inputLabel}>Assign to Monitoring Unit *</Text>
+                      <View style={styles.companySelectChipRow}>
+                        {units.map((u) => {
+                          const isSel = deviceForm.unit === u.name;
+                          return (
+                            <TouchableOpacity
+                              key={u.name}
+                              style={[styles.companyFormChip, isSel && styles.companyFormChipActive]}
+                              onPress={() => setDeviceForm((p) => ({ ...p, unit: u.name }))}
+                            >
+                              <Text style={[styles.companyFormChipText, isSel && styles.companyFormChipTextActive]}>
+                                🧪 {u.name}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    </View>
+                  );
+                })()}
+
+                <Text style={styles.inputLabel}>Hardware Device ID *</Text>
                 <TextInput
                   style={styles.input}
                   value={deviceForm.deviceId}
@@ -600,7 +1010,7 @@ export default function AdminScreen() {
 
                 <View style={styles.formGrid}>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.inputLabel}>Location / Station</Text>
+                    <Text style={styles.inputLabel}>Physical Location / Description</Text>
                     <TextInput
                       style={styles.input}
                       value={deviceForm.location}
@@ -620,16 +1030,13 @@ export default function AdminScreen() {
                   </View>
                 </View>
 
-                {/* Assigned Manager Selection */}
+                {/* Assigned Manager */}
                 {users.filter((u) => u.role?.startsWith('Manager')).length > 0 && (
                   <View style={{ marginTop: 4 }}>
                     <Text style={styles.inputLabel}>Assign Responsible Manager (Optional):</Text>
                     <View style={styles.managerSelectRow}>
                       <TouchableOpacity
-                        style={[
-                          styles.managerChip,
-                          !deviceForm.assignedManager && styles.managerChipActive,
-                        ]}
+                        style={[styles.managerChip, !deviceForm.assignedManager && styles.managerChipActive]}
                         onPress={() => setDeviceForm((p) => ({ ...p, assignedManager: '' }))}
                       >
                         <Text
@@ -646,10 +1053,7 @@ export default function AdminScreen() {
                         .map((mgr) => (
                           <TouchableOpacity
                             key={mgr.id}
-                            style={[
-                              styles.managerChip,
-                              deviceForm.assignedManager === mgr.id && styles.managerChipActive,
-                            ]}
+                            style={[styles.managerChip, deviceForm.assignedManager === mgr.id && styles.managerChipActive]}
                             onPress={() => setDeviceForm((p) => ({ ...p, assignedManager: mgr.id }))}
                           >
                             <Text
@@ -666,7 +1070,7 @@ export default function AdminScreen() {
                   </View>
                 )}
 
-                {/* Configurable Field Mappings */}
+                {/* Field Mappings */}
                 <DeviceFieldMapper
                   mappings={deviceForm.fieldMappings}
                   onChange={(maps) => setDeviceForm((p) => ({ ...p, fieldMappings: maps }))}
@@ -702,6 +1106,8 @@ export default function AdminScreen() {
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                         <Text style={styles.deviceAdminName}>{dev.name || dev.deviceId}</Text>
                         <StatusBadge status={dev.status || 'No Recent Data'} size="small" />
+                        {dev.branch ? <Text style={styles.branchTag}>🌿 {dev.branch}</Text> : null}
+                        {dev.unit ? <Text style={styles.unitTag}>🧪 {dev.unit}</Text> : null}
                       </View>
                       <Text style={styles.deviceAdminMeta}>
                         Hardware ID: {dev.deviceId} · Channel: {dev.channelId}
@@ -711,7 +1117,7 @@ export default function AdminScreen() {
                         Manager:{' '}
                         {dev.assignedManagerUser
                           ? `${dev.assignedManagerUser.name} (${dev.assignedManagerUser.email})`
-                          : 'Accessible to all managers'}
+                          : 'Accessible to all managers in branch'}
                         {' · '}
                         Sensors:{' '}
                         {dev.fieldMappings?.map((m) => m.parameterName).join(', ') || 'pH, Turbidity, TDS'}
@@ -740,13 +1146,13 @@ export default function AdminScreen() {
           </View>
         )}
 
-        {/* TAB 2: Users & Managers */}
+        {/* TAB 4: Users & Managers Provisioning (Super Admin Only) */}
         {activeTab === 'users' && (() => {
-          const targetCompanyId = isCompanyUser ? user?.companyId : selectedCompanyId;
-          const currentCompany = companies.find((c) => c.id === targetCompanyId);
-          const managerLimit = typeof currentCompany?.maxManagers === 'number'
-            ? currentCompany.maxManagers
-            : (currentCompany?.maxManagers?.total ?? currentCompany?.maxManagers?.manager1 ?? 2);
+          const currentCompany = (companies as Company[]).find((c) => c.id === selectedCompanyId);
+          const managerLimit =
+            typeof currentCompany?.maxManagers === 'number'
+              ? currentCompany.maxManagers
+              : (currentCompany?.maxManagers?.total ?? currentCompany?.maxManagers?.manager1 ?? 2);
           const currentManagers = users.filter(
             (u) => (u.role?.toLowerCase() === 'manager' || u.role?.toLowerCase().includes('manager')) && u.isActive !== false
           );
@@ -757,13 +1163,18 @@ export default function AdminScreen() {
           return (
             <View style={styles.sectionCard}>
               <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>User Management</Text>
+                <View>
+                  <Text style={styles.sectionTitle}>Manager Accounts Provisioning</Text>
+                  <Text style={styles.formSubtitle}>
+                    Super Admin creates and assigns Manager User ID & Password for each company. Managers have strictly view-only access.
+                  </Text>
+                </View>
                 <TouchableOpacity style={styles.refreshBtn} onPress={() => loadUsers()} disabled={loading}>
                   <Text style={styles.refreshBtnText}>🔄 Refresh</Text>
                 </TouchableOpacity>
               </View>
 
-              {/* Manager Allocation & Quota Banner (Shown before creating manager) */}
+              {/* Manager Allocation & Quota Banner */}
               <View style={[styles.quotaBanner, isLimitReached ? styles.quotaBannerFull : styles.quotaBannerNormal]}>
                 <View style={styles.quotaHeaderRow}>
                   <View style={{ flex: 1 }}>
@@ -772,12 +1183,17 @@ export default function AdminScreen() {
                     </Text>
                     <Text style={styles.quotaSubtitle}>
                       {isLimitReached
-                        ? `Maximum manager capacity reached (${currentCount}/${managerLimit}). To add a new manager, an existing manager must be removed.`
-                        : `This organization can register up to ${managerLimit} manager accounts. (${remainingSlots} slot${remainingSlots === 1 ? '' : 's'} available)`}
+                        ? `Maximum manager capacity reached (${currentCount}/${managerLimit}). To add a new manager, increase the quota or remove an existing manager.`
+                        : `This organization can have up to ${managerLimit} manager accounts. (${remainingSlots} slot${remainingSlots === 1 ? '' : 's'} available)`}
                     </Text>
                   </View>
                   <View style={[styles.quotaBadge, isLimitReached ? styles.quotaBadgeFull : styles.quotaBadgeNormal]}>
-                    <Text style={[styles.quotaBadgeText, isLimitReached ? styles.quotaBadgeTextFull : styles.quotaBadgeTextNormal]}>
+                    <Text
+                      style={[
+                        styles.quotaBadgeText,
+                        isLimitReached ? styles.quotaBadgeTextFull : styles.quotaBadgeTextNormal,
+                      ]}
+                    >
                       {currentCount} / {managerLimit} Used
                     </Text>
                   </View>
@@ -796,7 +1212,12 @@ export default function AdminScreen() {
                   <View style={styles.quotaStatDivider} />
                   <View style={styles.quotaStatItem}>
                     <Text style={styles.quotaStatLabel}>Available Slots</Text>
-                    <Text style={[styles.quotaStatValue, isLimitReached ? { color: '#DC2626' } : { color: '#059669' }]}>
+                    <Text
+                      style={[
+                        styles.quotaStatValue,
+                        isLimitReached ? { color: '#DC2626' } : { color: '#059669' },
+                      ]}
+                    >
                       {remainingSlots}
                     </Text>
                   </View>
@@ -805,15 +1226,64 @@ export default function AdminScreen() {
 
               {/* Create Manager Form */}
               <View style={styles.managerForm}>
-                <Text style={styles.formTitle}>Add New Manager / Operator</Text>
+                <Text style={styles.formTitle}>Create & Provision Manager Account</Text>
                 <Text style={styles.formSubtitle}>
-                  Managers receive view-only access and are restricted from downloading telemetry.
+                  Managers are assigned to a specific Branch and Unit, granting strictly view-only access to their authorized telemetry.
                 </Text>
+
+                <View style={styles.formSectionBox}>
+                  <Text style={styles.inputLabel}>Assign Branch for Manager *</Text>
+                  <View style={styles.companySelectChipRow}>
+                    {companyBranches.map((b) => {
+                      const isSel = managerForm.branch === b.name;
+                      return (
+                        <TouchableOpacity
+                          key={b.name}
+                          style={[styles.companyFormChip, isSel && styles.companyFormChipActive]}
+                          onPress={() => {
+                            const firstUnit = b.units?.[0]?.name || 'Unit 1';
+                            setManagerForm((p) => ({ ...p, branch: b.name, unit: firstUnit }));
+                          }}
+                        >
+                          <Text style={[styles.companyFormChipText, isSel && styles.companyFormChipTextActive]}>
+                            🌿 {b.name}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+
+                {(() => {
+                  const currBranch = companyBranches.find((b) => b.name === managerForm.branch);
+                  const units = currBranch?.units || [];
+                  return (
+                    <View style={styles.formSectionBox}>
+                      <Text style={styles.inputLabel}>Assign Unit for Manager *</Text>
+                      <View style={styles.companySelectChipRow}>
+                        {units.map((u) => {
+                          const isSel = managerForm.unit === u.name;
+                          return (
+                            <TouchableOpacity
+                              key={u.name}
+                              style={[styles.companyFormChip, isSel && styles.companyFormChipActive]}
+                              onPress={() => setManagerForm((p) => ({ ...p, unit: u.name }))}
+                            >
+                              <Text style={[styles.companyFormChipText, isSel && styles.companyFormChipTextActive]}>
+                                🧪 {u.name}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    </View>
+                  );
+                })()}
 
                 <TextInput
                   style={[styles.input, isLimitReached && styles.inputDisabled]}
                   value={managerForm.name}
-                  placeholder="Full Name"
+                  placeholder="Manager Full Name"
                   onChangeText={(txt) => setManagerForm((p) => ({ ...p, name: txt }))}
                   editable={!isLimitReached}
                 />
@@ -821,7 +1291,7 @@ export default function AdminScreen() {
                 <TextInput
                   style={[styles.input, isLimitReached && styles.inputDisabled]}
                   value={managerForm.email}
-                  placeholder="Email Address"
+                  placeholder="Manager User ID / Email Address"
                   autoCapitalize="none"
                   keyboardType="email-address"
                   onChangeText={(txt) => setManagerForm((p) => ({ ...p, email: txt }))}
@@ -831,7 +1301,7 @@ export default function AdminScreen() {
                 <TextInput
                   style={[styles.input, isLimitReached && styles.inputDisabled]}
                   value={managerForm.password}
-                  placeholder="Password (min 8 chars)"
+                  placeholder="Temporary Password (min 8 chars)"
                   secureTextEntry
                   onChangeText={(txt) => setManagerForm((p) => ({ ...p, password: txt }))}
                   editable={!isLimitReached}
@@ -843,7 +1313,7 @@ export default function AdminScreen() {
                   disabled={isLimitReached}
                 >
                   <Text style={styles.createManagerBtnText}>
-                    {isLimitReached ? 'Manager Quota Full (Limit Reached)' : 'Create Manager Account'}
+                    {isLimitReached ? 'Manager Quota Full (Limit Reached)' : 'Provision Manager Account'}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -853,16 +1323,20 @@ export default function AdminScreen() {
               {users.map((u) => (
                 <View key={u.id} style={styles.userCard}>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.userName}>{u.name}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <Text style={styles.userName}>{u.name}</Text>
+                      <Text style={styles.userRolePill}>{u.role}</Text>
+                    </View>
                     <Text style={styles.userEmail}>{u.email}</Text>
-                    <Text style={styles.userMeta}>Role: {u.role} · Active: {String(u.isActive)}</Text>
+                    <Text style={styles.userMeta}>
+                      {u.branch ? `🌿 Branch: ${u.branch}` : 'All Branches'}
+                      {u.unit ? ` · 🧪 Unit: ${u.unit}` : ''}
+                      {` · Active: ${String(u.isActive)}`}
+                    </Text>
                   </View>
 
                   {u.role !== 'SuperAdmin' && u.email !== user?.email && (
-                    <TouchableOpacity
-                      style={styles.userDeleteBtn}
-                      onPress={() => handleDeleteUser(u.id, u.name)}
-                    >
+                    <TouchableOpacity style={styles.userDeleteBtn} onPress={() => handleDeleteUser(u.id, u.name)}>
                       <Text style={styles.userDeleteBtnText}>Delete</Text>
                     </TouchableOpacity>
                   )}
@@ -872,17 +1346,12 @@ export default function AdminScreen() {
           );
         })()}
 
-        {/* TAB 3: Audit Trail */}
-        {activeTab === 'audit' && (
-          <AuditLogViewer companyId={isSuperAdmin ? selectedCompanyId : user?.companyId} />
-        )}
-
-        {/* TAB 4: Application Version & Updates Settings */}
+        {/* TAB 5: Application Version & Updates Settings */}
         {activeTab === 'config' && (
           <View style={styles.sectionCard}>
             <View style={styles.sectionHeader}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.sectionTitle}>Settings & Updates</Text>
+                <Text style={styles.sectionTitle}>Settings & System Health</Text>
                 <Text style={styles.formSubtitle}>
                   Application version, software update check, and account session controls.
                 </Text>
@@ -1000,6 +1469,19 @@ const styles = StyleSheet.create({
     color: '#64748b',
     marginTop: 2,
     fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
+  },
+  headerLogoutBtn: {
+    backgroundColor: '#fee2e2',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#fca5a5',
+  },
+  headerLogoutBtnText: {
+    color: '#dc2626',
+    fontSize: 12,
+    fontWeight: '700',
   },
   settingsLogoutBtn: {
     backgroundColor: '#fee2e2',
@@ -1146,7 +1628,27 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
-  managerForm: {
+  // Branches & Units styles
+  branchFormBox: {
+    backgroundColor: '#f8fafc',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    padding: 12,
+    gap: 8,
+  },
+  saveBranchBtn: {
+    backgroundColor: '#16a34a',
+    paddingVertical: 10,
+    borderRadius: 6,
+    alignItems: 'center',
+  },
+  saveBranchBtnText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  branchCard: {
     backgroundColor: '#f8fafc',
     borderRadius: 8,
     borderWidth: 1,
@@ -1154,50 +1656,258 @@ const styles = StyleSheet.create({
     padding: 12,
     gap: 8,
   },
-  formTitle: {
-    fontSize: 14,
+  branchHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  branchTitle: {
+    fontSize: 15,
     fontWeight: '700',
     color: '#0f172a',
   },
-  formSubtitle: {
-    fontSize: 11,
-    color: '#64748b',
+  branchCodeBadge: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#0284c7',
+    backgroundColor: '#e0f2fe',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
   },
-  input: {
+  branchAddress: {
+    fontSize: 12,
+    color: '#64748b',
+    marginTop: 2,
+  },
+  addUnitBtn: {
+    backgroundColor: '#2563eb',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+  },
+  addUnitBtnText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  deleteBranchBtn: {
+    backgroundColor: '#fee2e2',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+  },
+  deleteBranchBtnText: {
+    color: '#dc2626',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  unitFormBox: {
+    backgroundColor: '#eff6ff',
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+    padding: 10,
+    gap: 8,
+  },
+  unitFormTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#1e40af',
+  },
+  saveUnitBtn: {
+    backgroundColor: '#2563eb',
+    paddingVertical: 6,
+    borderRadius: 4,
+    alignItems: 'center',
+  },
+  saveUnitBtnText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  unitsSectionTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#475569',
+    marginTop: 2,
+  },
+  unitChipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  unitBadge: {
+    backgroundColor: '#e2e8f0',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  unitBadgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#334155',
+  },
+  unitDeleteCross: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#ef4444',
+  },
+  emptyUnitsText: {
+    fontSize: 11,
+    color: '#94a3b8',
+    fontStyle: 'italic',
+  },
+  // Devices & Forms
+  activeCompanyBanner: {
+    backgroundColor: '#f1f5f9',
+    padding: 10,
+    borderRadius: 8,
+    gap: 6,
+  },
+  activeCompanyBannerTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#475569',
+  },
+  deviceFormCard: {
+    backgroundColor: '#f8fafc',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    padding: 12,
+    gap: 8,
+  },
+  formSectionBox: {
+    gap: 6,
+    marginBottom: 4,
+  },
+  companySelectChipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  companyFormChip: {
     backgroundColor: '#fff',
     borderWidth: 1,
     borderColor: '#cbd5e1',
     borderRadius: 6,
     paddingHorizontal: 10,
-    paddingVertical: 8,
-    fontSize: 12,
+    paddingVertical: 6,
   },
-  inputLabel: {
-    fontSize: 11,
+  companyFormChipActive: {
+    backgroundColor: '#2563eb',
+    borderColor: '#2563eb',
+  },
+  companyFormChipText: {
+    fontSize: 12,
     fontWeight: '600',
-    color: '#475569',
+    color: '#334155',
+  },
+  companyFormChipTextActive: {
+    color: '#fff',
+  },
+  branchTag: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#065f46',
+    backgroundColor: '#d1fae5',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  unitTag: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#1e40af',
+    backgroundColor: '#dbeafe',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  managerSelectRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
     marginTop: 4,
   },
-  createManagerBtn: {
+  managerChip: {
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  managerChipActive: {
     backgroundColor: '#2563eb',
-    paddingVertical: 10,
+    borderColor: '#2563eb',
+  },
+  managerChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#334155',
+  },
+  managerChipTextActive: {
+    color: '#fff',
+  },
+  saveDeviceBtn: {
+    backgroundColor: '#16a34a',
+    paddingVertical: 12,
     borderRadius: 6,
     alignItems: 'center',
-    marginTop: 4,
+    marginTop: 8,
   },
-  createManagerBtnText: {
+  saveDeviceBtnText: {
     color: '#fff',
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '700',
   },
-  createManagerBtnDisabled: {
-    backgroundColor: '#94a3b8',
-    opacity: 0.7,
+  btnDisabled: {
+    opacity: 0.6,
   },
-  inputDisabled: {
-    backgroundColor: '#f1f5f9',
-    color: '#94a3b8',
+  deviceAdminCard: {
+    backgroundColor: '#f8fafc',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    padding: 12,
+    gap: 6,
   },
+  deviceAdminHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  deviceAdminName: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
+  deviceAdminMeta: {
+    fontSize: 11,
+    color: '#64748b',
+    marginTop: 2,
+  },
+  deviceAdminSubMeta: {
+    fontSize: 11,
+    color: '#475569',
+    marginTop: 2,
+  },
+  deviceActionsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: '#e2e8f0',
+    paddingTop: 6,
+    marginTop: 4,
+  },
+  // Quota & Manager styles
   quotaBanner: {
     borderRadius: 10,
     borderWidth: 1,
@@ -1254,343 +1964,201 @@ const styles = StyleSheet.create({
   },
   quotaStatsRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.85)',
+    backgroundColor: '#fff',
     borderRadius: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
+    padding: 10,
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.06)',
+    borderColor: '#e2e8f0',
+    alignItems: 'center',
   },
   quotaStatItem: {
     flex: 1,
     alignItems: 'center',
+  },
+  quotaStatDivider: {
+    width: 1,
+    height: 24,
+    backgroundColor: '#cbd5e1',
   },
   quotaStatLabel: {
     fontSize: 10,
     color: '#64748b',
     fontWeight: '600',
     textTransform: 'uppercase',
-    marginBottom: 2,
   },
   quotaStatValue: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#0f172a',
+    marginTop: 2,
+  },
+  managerForm: {
+    backgroundColor: '#f8fafc',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    padding: 12,
+    gap: 8,
+  },
+  formTitle: {
     fontSize: 14,
     fontWeight: '700',
     color: '#0f172a',
   },
-  quotaStatDivider: {
-    width: 1,
-    height: 24,
-    backgroundColor: '#e2e8f0',
+  formSubtitle: {
+    fontSize: 11,
+    color: '#64748b',
+  },
+  input: {
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: 12,
+  },
+  inputLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#475569',
+    marginTop: 4,
+  },
+  formGrid: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  createManagerBtn: {
+    backgroundColor: '#2563eb',
+    paddingVertical: 10,
+    borderRadius: 6,
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  createManagerBtnText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  createManagerBtnDisabled: {
+    backgroundColor: '#94a3b8',
+    opacity: 0.7,
+  },
+  inputDisabled: {
+    backgroundColor: '#f1f5f9',
+    color: '#94a3b8',
   },
   userCard: {
+    backgroundColor: '#f8fafc',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    padding: 12,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
+    marginTop: 8,
   },
   userName: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '700',
     color: '#0f172a',
   },
+  userRolePill: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#2563eb',
+    backgroundColor: '#dbeafe',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
   userEmail: {
     fontSize: 12,
-    color: '#64748b',
+    color: '#475569',
+    marginTop: 2,
   },
   userMeta: {
     fontSize: 11,
-    color: '#94a3b8',
+    color: '#64748b',
     marginTop: 2,
   },
   userDeleteBtn: {
     backgroundColor: '#fee2e2',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
   },
   userDeleteBtnText: {
     color: '#dc2626',
     fontSize: 11,
-    fontWeight: '600',
-  },
-  // Active company banner & device company chips
-  activeCompanyBanner: {
-    backgroundColor: '#f8fafc',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: 8,
-    padding: 10,
-    marginBottom: 10,
-  },
-  activeCompanyBannerTitle: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#64748b',
-    marginBottom: 4,
-    textTransform: 'uppercase',
-  },
-  formSectionBox: {
-    backgroundColor: '#ffffff',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: 8,
-    padding: 10,
-    marginBottom: 10,
-  },
-  companySelectChipRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginTop: 4,
-  },
-  companyFormChip: {
-    backgroundColor: '#f1f5f9',
-    borderWidth: 1,
-    borderColor: '#cbd5e1',
-    borderRadius: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-  },
-  companyFormChipActive: {
-    backgroundColor: '#eff6ff',
-    borderColor: '#2563eb',
-  },
-  companyFormChipText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#475569',
-  },
-  companyFormChipTextActive: {
-    color: '#2563eb',
     fontWeight: '700',
   },
-  selectedCompanyHint: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#16a34a',
-    marginTop: 6,
-  },
-  fieldErrorText: {
-    fontSize: 11,
-    color: '#dc2626',
-    marginTop: 6,
-    fontWeight: '600',
-  },
-  // Version & Updates Settings Styles
+  // Settings tab
   versionBadge: {
-    backgroundColor: '#eff6ff',
-    borderWidth: 1,
-    borderColor: '#bfdbfe',
-    borderRadius: 20,
-    paddingHorizontal: 12,
+    backgroundColor: '#dbeafe',
+    paddingHorizontal: 8,
     paddingVertical: 4,
-    alignSelf: 'flex-start',
+    borderRadius: 6,
   },
   versionBadgeText: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: '#1d4ed8',
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#2563eb',
   },
   settingsSubCard: {
-    backgroundColor: '#ffffff',
+    backgroundColor: '#f8fafc',
+    borderRadius: 8,
     borderWidth: 1,
     borderColor: '#e2e8f0',
-    borderRadius: 10,
     padding: 14,
-    gap: 10,
-    marginVertical: 4,
+    gap: 8,
   },
   settingsSubCardTitle: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
     color: '#0f172a',
-    borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
-    paddingBottom: 8,
     marginBottom: 4,
   },
   infoRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: 10,
-    flexWrap: 'wrap',
+    paddingVertical: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
   },
   infoLabel: {
     fontSize: 12,
     color: '#64748b',
-    fontWeight: '600',
   },
   infoValue: {
     fontSize: 12,
-    color: '#1e293b',
     fontWeight: '600',
-    textAlign: 'right',
-  },
-  onlinePill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#f0fdf4',
-    borderWidth: 1,
-    borderColor: '#bbf7d0',
-    borderRadius: 12,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-  },
-  onlineDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: '#16a34a',
-  },
-  onlinePillText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#15803d',
+    color: '#0f172a',
   },
   updateCheckBtn: {
     backgroundColor: '#2563eb',
     paddingVertical: 10,
-    borderRadius: 8,
+    borderRadius: 6,
     alignItems: 'center',
     marginTop: 8,
   },
   updateCheckBtnText: {
-    color: '#ffffff',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  changelogItem: {
-    fontSize: 12,
-    color: '#475569',
-    lineHeight: 18,
-  },
-  btnDisabled: {
-    opacity: 0.6,
-  },
-  accessDeniedCard: {
-    backgroundColor: '#fee2e2',
-    borderRadius: 12,
-    padding: 24,
-    margin: 20,
-    alignItems: 'center',
-  },
-  accessDeniedTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#b91c1c',
-    marginBottom: 8,
-  },
-  accessDeniedText: {
-    fontSize: 13,
-    color: '#7f1d1d',
-    textAlign: 'center',
-  },
-  // Device Management Styles
-  deviceFormCard: {
-    backgroundColor: '#f8fafc',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#cbd5e1',
-    padding: 14,
-    gap: 8,
-    marginVertical: 4,
-  },
-  formGrid: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  saveDeviceBtn: {
-    backgroundColor: '#16a34a',
-    paddingVertical: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  saveDeviceBtnText: {
     color: '#fff',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  managerSelectRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    marginVertical: 4,
-  },
-  managerChip: {
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#cbd5e1',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 6,
-  },
-  managerChipActive: {
-    backgroundColor: '#eff6ff',
-    borderColor: '#2563eb',
-  },
-  managerChipText: {
-    fontSize: 11,
-    color: '#475569',
-    fontWeight: '600',
-  },
-  managerChipTextActive: {
-    color: '#2563eb',
-    fontWeight: '700',
-  },
-  deviceAdminCard: {
-    backgroundColor: '#f8fafc',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    padding: 12,
-    gap: 6,
-  },
-  deviceAdminHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-  },
-  deviceAdminName: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#0f172a',
-  },
-  deviceAdminMeta: {
     fontSize: 12,
-    color: '#64748b',
-    marginTop: 2,
-  },
-  deviceAdminSubMeta: {
-    fontSize: 11,
-    color: '#94a3b8',
-    marginTop: 2,
-  },
-  deviceActionsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 6,
-    borderTopWidth: 1,
-    borderTopColor: '#e2e8f0',
-    paddingTop: 6,
+    fontWeight: '700',
   },
   emptyCard: {
+    alignItems: 'center',
+    padding: 24,
     backgroundColor: '#f8fafc',
-    borderRadius: 10,
+    borderRadius: 8,
     borderWidth: 1,
     borderColor: '#e2e8f0',
-    padding: 24,
-    alignItems: 'center',
-    gap: 6,
   },
   emptyIcon: {
     fontSize: 32,
+    marginBottom: 8,
   },
   emptyTitle: {
     fontSize: 15,
@@ -1601,6 +2169,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#64748b',
     textAlign: 'center',
-    maxWidth: 320,
+    marginTop: 4,
+    maxWidth: 360,
   },
 });

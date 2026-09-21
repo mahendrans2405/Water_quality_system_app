@@ -52,6 +52,9 @@ async function requireAuth(req, res, next) {
       roleId: roleDoc?._id ? String(roleDoc._id) : (user.role ? String(user.role) : null),
       permissions,
       companyId: user.company ? String(user.company) : null,
+      branch: user.branch || null,
+      unit: user.unit || null,
+      assignedDevices: Array.isArray(user.assignedDevices) ? user.assignedDevices.map(String) : [],
       email: user.email,
       name: user.name,
     };

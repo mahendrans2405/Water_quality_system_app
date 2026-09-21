@@ -3,7 +3,7 @@ const { z } = require('zod');
 
 const { Roles, ALL_ROLES } = require('../constants/roles');
 const { Permissions } = require('../constants/permissions');
-const { requireAuth, requirePermission, requireCompanyScope } = require('../middleware/auth');
+const { requireAuth, requirePermission, requireCompanyScope, authorize } = require('../middleware/auth');
 const { validate } = require('../middleware/validate');
 const { Role, User } = require('../models');
 const { hashPassword } = require('../utils/crypto');
@@ -21,22 +21,33 @@ const createUserSchema = z.object({
     email: z.string().email(),
     password: z.string().min(8).max(200),
     roleName: z.string().min(1),
-    companyId: z.string().min(1).optional(),
+    companyId: z.string().min(1),
+    branch: z.string().max(200).optional(),
+    unit: z.string().max(200).optional(),
+    assignedDevices: z.array(z.string()).optional(),
     isActive: z.boolean().optional(),
   }),
 });
 
-// POST /api/users - Create new user/manager
+// POST /api/users - Create new manager/user (SuperAdmin ONLY)
 usersRouter.post(
   '/',
-  requirePermission(Permissions.USERS_MANAGE),
-  requireCompanyScope,
+  authorize(Roles.SuperAdmin),
   validate(createUserSchema),
   async (req, res, next) => {
     try {
-      const { name, email, password, roleName: requestedRoleName, companyId: requestedCompanyId, isActive } = req.validated.body;
+      const {
+        name,
+        email,
+        password,
+        roleName: requestedRoleName,
+        companyId,
+        branch,
+        unit,
+        assignedDevices,
+        isActive,
+      } = req.validated.body;
 
-      // Normalize roleName (e.g. Manager1/Manager2 or Manager)
       let roleName = requestedRoleName;
       if (roleName.toLowerCase() === 'manager') roleName = Roles.Manager;
       else if (roleName.toLowerCase() === 'manager1') roleName = Roles.Manager1;
@@ -44,25 +55,22 @@ usersRouter.post(
       else if (roleName.toLowerCase() === 'company') roleName = Roles.Company;
       else if (roleName.toLowerCase() === 'superadmin') roleName = Roles.SuperAdmin;
 
-      const companyId = req.user.role === Roles.Company ? req.user.companyId : requestedCompanyId || null;
       if (roleName !== Roles.SuperAdmin && !companyId) {
         throw httpError(400, 'COMPANY_REQUIRED', 'companyId is required');
       }
-      if (req.user.role === Roles.Company && roleName === Roles.SuperAdmin) {
-        throw httpError(403, 'FORBIDDEN', 'Company admins cannot create SuperAdmin users');
-      }
 
       const existing = await User.findOne({ email: email.toLowerCase() }).lean();
-      if (existing) throw httpError(409, 'EMAIL_TAKEN', 'Email already in use');
+      if (existing) throw httpError(409, 'EMAIL_TAKEN', 'Email/User ID already in use');
 
       let role = await Role.findOne({ name: roleName });
       if (!role) {
-        // Fallback to Manager if not found
         role = await Role.findOne({ name: Roles.Manager });
       }
       if (!role) throw httpError(500, 'ROLE_NOT_FOUND', 'Role not found');
 
-      await assertManagerLimitAvailable({ companyId, roleName });
+      if (roleName === Roles.Manager || roleName === Roles.Manager1 || roleName === Roles.Manager2) {
+        await assertManagerLimitAvailable({ companyId, roleName });
+      }
 
       const passwordHash = await hashPassword(password);
       const user = await User.create({
@@ -71,19 +79,10 @@ usersRouter.post(
         passwordHash,
         role: role._id,
         company: roleName === Roles.SuperAdmin ? null : companyId,
+        branch: (branch || '').trim(),
+        unit: (unit || '').trim(),
+        assignedDevices: Array.isArray(assignedDevices) ? assignedDevices : [],
         isActive: isActive ?? true,
-      });
-
-      // Audit Log
-      await logAudit({
-        userId: req.user.id,
-        userEmail: req.user.email,
-        companyId,
-        action: 'USER_CREATE',
-        resource: 'user',
-        resourceId: String(user._id),
-        details: { name: user.name, email: user.email, role: role.name },
-        ipAddress: req.ip,
       });
 
       res.status(201).json({
@@ -94,6 +93,9 @@ usersRouter.post(
           email: user.email,
           role: role.name,
           companyId: user.company ? String(user.company) : null,
+          branch: user.branch || '',
+          unit: user.unit || '',
+          assignedDevices: user.assignedDevices || [],
           isActive: user.isActive,
         },
       });
@@ -126,6 +128,9 @@ usersRouter.get(
           email: u.email,
           role: u.role?.name,
           companyId: u.company ? String(u.company) : null,
+          branch: u.branch || '',
+          unit: u.unit || '',
+          assignedDevices: u.assignedDevices || [],
           isActive: u.isActive,
         })),
       });

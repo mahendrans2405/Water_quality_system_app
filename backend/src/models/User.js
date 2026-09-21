@@ -7,6 +7,9 @@ const userSchema = new mongoose.Schema(
     passwordHash: { type: String, required: true },
     role: { type: mongoose.Schema.Types.ObjectId, ref: 'Role', required: true },
     company: { type: mongoose.Schema.Types.ObjectId, ref: 'Company' },
+    branch: { type: String, default: '', trim: true },
+    unit: { type: String, default: '', trim: true },
+    assignedDevices: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Device' }],
     isActive: { type: Boolean, default: true },
 
     refreshTokenHash: { type: String },

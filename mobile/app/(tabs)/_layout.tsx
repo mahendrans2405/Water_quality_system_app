@@ -84,11 +84,12 @@ export default function TabLayout() {
       <Tabs.Screen
         name="admin"
         options={{
-          title: (role === 'SuperAdmin' || role === 'Company') ? 'Admin' : 'Settings',
+          href: role === 'SuperAdmin' ? '/(tabs)/admin' : null,
+          title: 'Admin',
           tabBarIcon: ({ color }) => (
             <IconSymbol
               size={28}
-              name={(role === 'SuperAdmin' || role === 'Company') ? 'person.3.fill' : 'gearshape.fill'}
+              name="person.3.fill"
               color={color}
             />
           ),
