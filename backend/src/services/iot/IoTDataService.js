@@ -1,5 +1,6 @@
 const { ThingSpeakProvider } = require('./ThingSpeakProvider');
 const { Device } = require('../../models');
+const { evaluateWaterParameter, evaluateReadingSeverity } = require('./waterAlerts');
 
 /**
  * IoTDataService - Core Abstraction Layer for IoT Telemetry.
@@ -35,6 +36,7 @@ class IoTDataService {
 
   /**
    * Map raw provider feed entry to standardized telemetry object based on device fieldMappings.
+   * Evaluates WHO/EPA tiered alert thresholds for pH, TDS, and Turbidity (Normal, Alert, Warning, Danger).
    * @param {object} device
    * @param {object} rawFeed
    * @returns {object} Standardized telemetry record
@@ -63,16 +65,23 @@ class IoTDataService {
         if (Number.isNaN(value)) value = String(rawValue);
       }
 
+      // Tiered Alert Evaluation (Normal, Alert, Warning, Danger)
+      const evaluation = evaluateWaterParameter(mapping.parameterName, value, mapping.unit);
+
       parameters[mapping.parameterName] = {
         fieldNumber: mapping.fieldNumber,
         value,
         unit: mapping.unit || '',
         minThreshold: mapping.minThreshold,
         maxThreshold: mapping.maxThreshold,
+        severity: evaluation.severity,
+        targetDesc: evaluation.targetDesc,
       };
 
-      // Check thresholds if numeric
-      if (typeof value === 'number') {
+      if (evaluation.isAlert && evaluation.alertMessage) {
+        alerts.push(evaluation.alertMessage);
+      } else if (typeof value === 'number') {
+        // Fallback for custom user-configured thresholds if not standard water parameters
         if (mapping.minThreshold !== null && mapping.minThreshold !== undefined && value < mapping.minThreshold) {
           alerts.push(`${mapping.parameterName} is below minimum threshold (${value} < ${mapping.minThreshold} ${mapping.unit || ''})`);
         }
@@ -83,25 +92,30 @@ class IoTDataService {
     }
 
     const timestamp = rawFeed.created_at ? new Date(rawFeed.created_at) : new Date();
+    const readingSeverity = evaluateReadingSeverity(parameters);
 
     return {
       id: rawFeed.entry_id ? String(rawFeed.entry_id) : String(timestamp.getTime()),
       timestamp: timestamp.toISOString(),
       parameters,
       alerts,
+      severity: readingSeverity.severity,
+      status: readingSeverity.status,
+      isSafe: readingSeverity.isSafe,
       isWarning: alerts.length > 0,
       raw: rawFeed,
     };
   }
 
   /**
-   * Determine device status based on last timestamp received and alerts.
+   * Determine device status based on last timestamp received, alerts, and severity.
    * @param {Date|string|null} lastTimestamp
    * @param {number} offlineThresholdMinutes
    * @param {boolean} hasAlerts
-   * @returns {'Online' | 'Offline' | 'Warning' | 'No Recent Data'}
+   * @param {'NORMAL' | 'ALERT' | 'WARNING' | 'DANGER'} [maxSeverity='NORMAL']
+   * @returns {'Online' | 'Offline' | 'Warning' | 'Danger' | 'No Recent Data'}
    */
-  calculateDeviceStatus(lastTimestamp, offlineThresholdMinutes = 30, hasAlerts = false) {
+  calculateDeviceStatus(lastTimestamp, offlineThresholdMinutes = 30, hasAlerts = false, maxSeverity = 'NORMAL') {
     if (!lastTimestamp) return 'No Recent Data';
 
     const lastTime = new Date(lastTimestamp).getTime();
@@ -113,7 +127,11 @@ class IoTDataService {
       return 'Offline';
     }
 
-    if (hasAlerts) {
+    if (maxSeverity === 'DANGER') {
+      return 'Danger';
+    }
+
+    if (hasAlerts || maxSeverity === 'WARNING' || maxSeverity === 'ALERT') {
       return 'Warning';
     }
 
@@ -166,7 +184,8 @@ class IoTDataService {
         const status = this.calculateDeviceStatus(
           telemetry?.timestamp,
           device.offlineThresholdMinutes,
-          telemetry?.isWarning
+          telemetry?.isWarning,
+          telemetry?.severity
         );
 
         // Update cache
@@ -198,7 +217,8 @@ class IoTDataService {
           const status = this.calculateDeviceStatus(
             cached.lastSuccessfulData?.timestamp,
             device.offlineThresholdMinutes,
-            cached.lastSuccessfulData?.isWarning
+            cached.lastSuccessfulData?.isWarning,
+            cached.lastSuccessfulData?.severity
           );
           return {
             telemetry: cached.lastSuccessfulData,

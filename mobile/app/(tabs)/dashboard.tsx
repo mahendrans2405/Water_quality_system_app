@@ -207,7 +207,7 @@ export default function DashboardScreen() {
             <View style={styles.activeCompanyBadge}>
               <Text style={styles.activeCompanyText}>
                 Organization: <Text style={{ fontWeight: '700', color: '#0f172a' }}>{activeCompany.name}</Text>
-                {activeCompany.address ? ` · 📍 ${activeCompany.address}` : ''}
+                {activeCompany.address ? ` · Address: ${activeCompany.address}` : ''}
               </Text>
             </View>
           )}
@@ -229,7 +229,7 @@ export default function DashboardScreen() {
         {!isManager && availableBranches.length > 0 && (
           <View style={styles.filterSectionCard}>
             <View style={styles.filterGroup}>
-              <Text style={styles.filterLabel}>🌿 Filter by Branch:</Text>
+              <Text style={styles.filterLabel}>Filter by Branch:</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterChipsRow}>
                 <TouchableOpacity
                   style={[styles.filterChip, selectedBranch === 'ALL' && styles.filterChipActive]}
@@ -255,7 +255,7 @@ export default function DashboardScreen() {
                       }}
                     >
                       <Text style={[styles.filterChipText, isSel && styles.filterChipTextActive]}>
-                        🌿 {b.name}
+                        {b.name}
                       </Text>
                     </TouchableOpacity>
                   );
@@ -265,7 +265,7 @@ export default function DashboardScreen() {
 
             {availableUnits.length > 0 && (
               <View style={[styles.filterGroup, { marginTop: 8 }]}>
-                <Text style={styles.filterLabel}>🧪 Filter by Unit:</Text>
+                <Text style={styles.filterLabel}>Filter by Unit:</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterChipsRow}>
                   <TouchableOpacity
                     style={[styles.filterChip, selectedUnit === 'ALL' && styles.filterChipActive]}
@@ -285,7 +285,7 @@ export default function DashboardScreen() {
                         onPress={() => setSelectedUnit(u)}
                       >
                         <Text style={[styles.filterChipText, isSel && styles.filterChipTextActive]}>
-                          🧪 {u}
+                          {u}
                         </Text>
                       </TouchableOpacity>
                     );
@@ -341,8 +341,8 @@ export default function DashboardScreen() {
         <View style={styles.actionsBar}>
           <Text style={styles.sectionHeaderTitle}>
             Connected Devices ({filteredDevices.length})
-            {selectedBranch !== 'ALL' ? ` · 🌿 ${selectedBranch}` : ''}
-            {selectedUnit !== 'ALL' ? ` · 🧪 ${selectedUnit}` : ''}
+            {selectedBranch !== 'ALL' ? ` · Branch: ${selectedBranch}` : ''}
+            {selectedUnit !== 'ALL' ? ` · Unit: ${selectedUnit}` : ''}
           </Text>
 
           <View style={styles.actionsBtnRow}>
@@ -412,12 +412,12 @@ export default function DashboardScreen() {
                         <StatusBadge status={status} size="small" />
                       </View>
                       <View style={styles.branchUnitRow}>
-                        {device.branch ? <Text style={styles.deviceBranchBadge}>🌿 {device.branch}</Text> : null}
-                        {device.unit ? <Text style={styles.deviceUnitBadge}>🧪 {device.unit}</Text> : null}
+                        {device.branch ? <Text style={styles.deviceBranchBadge}>Branch: {device.branch}</Text> : null}
+                        {device.unit ? <Text style={styles.deviceUnitBadge}>Unit: {device.unit}</Text> : null}
                       </View>
                       <Text style={styles.deviceMeta} numberOfLines={2}>
                         Hardware ID: {device.deviceId} · Channel: {device.channelId}
-                        {device.location ? ` · 📍 ${device.location}` : ''}
+                        {device.location ? ` · Location: ${device.location}` : ''}
                       </Text>
                     </View>
 
@@ -431,23 +431,42 @@ export default function DashboardScreen() {
                     {Object.keys(parameters).length > 0 ? (
                       Object.entries(parameters).map(([paramName, paramData]) => {
                         const val = paramData.value;
-                        const hasThreshold = paramData.minThreshold !== null || paramData.maxThreshold !== null;
-                        const isAlert =
-                          typeof val === 'number' &&
-                          ((paramData.minThreshold !== null && val < (paramData.minThreshold as number)) ||
-                            (paramData.maxThreshold !== null && val > (paramData.maxThreshold as number)));
+                        const severity = paramData.severity;
+                        const isParamDanger = severity === 'DANGER';
+                        const isParamWarn = severity === 'WARNING';
+                        const isParamAlert = severity === 'ALERT';
+
+                        const boxStyle = isParamDanger
+                          ? styles.paramBoxDanger
+                          : isParamWarn
+                          ? styles.paramBoxWarn
+                          : isParamAlert
+                          ? styles.paramBoxAlert
+                          : null;
+
+                        const valStyle = isParamDanger
+                          ? styles.paramValueDanger
+                          : isParamWarn
+                          ? styles.paramValueWarn
+                          : isParamAlert
+                          ? styles.paramValueAlert
+                          : null;
 
                         return (
-                          <View key={paramName} style={[styles.paramBox, isAlert && styles.paramBoxAlert]}>
+                          <View key={paramName} style={[styles.paramBox, boxStyle]}>
                             <Text style={styles.paramLabel}>{paramName}</Text>
-                            <Text style={[styles.paramValue, isAlert && styles.paramValueAlert]}>
+                            <Text style={[styles.paramValue, valStyle]}>
                               {val !== null && val !== undefined ? `${val} ${paramData.unit}` : '--'}
                             </Text>
-                            {hasThreshold && (
+                            {paramData.targetDesc ? (
+                              <Text style={styles.thresholdSub}>
+                                Target: {paramData.targetDesc}
+                              </Text>
+                            ) : (paramData.minThreshold !== null || paramData.maxThreshold !== null) ? (
                               <Text style={styles.thresholdSub}>
                                 Limits: {paramData.minThreshold ?? 0} - {paramData.maxThreshold ?? '∞'} {paramData.unit}
                               </Text>
-                            )}
+                            ) : null}
                           </View>
                         );
                       })
@@ -871,6 +890,14 @@ const styles = StyleSheet.create({
     padding: 10,
   },
   paramBoxAlert: {
+    backgroundColor: '#fffbeb',
+    borderColor: '#fde68a',
+  },
+  paramBoxWarn: {
+    backgroundColor: '#fff7ed',
+    borderColor: '#fed7aa',
+  },
+  paramBoxDanger: {
     backgroundColor: '#fef2f2',
     borderColor: '#fca5a5',
   },
@@ -887,6 +914,12 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   paramValueAlert: {
+    color: '#d97706',
+  },
+  paramValueWarn: {
+    color: '#ea580c',
+  },
+  paramValueDanger: {
     color: '#dc2626',
   },
   thresholdSub: {

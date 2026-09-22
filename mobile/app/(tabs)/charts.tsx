@@ -367,7 +367,7 @@ export default function ChartsScreen() {
 
         const pngUrl = canvas.toDataURL('image/png');
         const downloadLink = document.createElement('a');
-        downloadLink.download = `${selectedParamName.replace(/\s+/g, '_')}_graph_${Date.now()}.png`;
+        downloadLink.download = `Value_${currentMapping?.fieldNumber || 1}_graph_${Date.now()}.png`;
         downloadLink.href = pngUrl;
         document.body.appendChild(downloadLink);
         downloadLink.click();
@@ -445,7 +445,7 @@ export default function ChartsScreen() {
                   }}
                 >
                   <Text style={[styles.deviceTabText, selectedDeviceId === d.id && styles.deviceTabTextActive]}>
-                    {d.name || d.deviceId} {d.branch ? `(🌿 ${d.branch})` : ''}
+                    {d.name || d.deviceId} {d.branch ? `(Branch: ${d.branch})` : ''}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -453,11 +453,11 @@ export default function ChartsScreen() {
           </View>
         )}
 
-        {/* METRIC SELECTOR TABS: Click pH, Turbidity, TDS to switch graph */}
+        {/* METRIC SELECTOR TABS: Click Value 1, Value 2, Value 3 to switch graph */}
         <View style={styles.paramSelectorSection}>
           <Text style={styles.controlLabel}>Select Sensor Metric (Single Graph):</Text>
           <View style={styles.paramTabsRow}>
-            {activeMappings.map((m) => {
+            {activeMappings.map((m, mIdx) => {
               const isSelected = m.parameterName.toLowerCase() === selectedParamName.toLowerCase();
               const meta = getParamMeta(m.parameterName);
 
@@ -486,11 +486,11 @@ export default function ChartsScreen() {
                 >
                   <View style={{ alignItems: 'center' }}>
                     <Text style={[styles.paramTabText, isSelected && styles.paramTabTextActive]}>
-                      {m.parameterName}
+                      Value {m.fieldNumber || mIdx + 1}
                     </Text>
                     {latestVal !== null && latestVal !== undefined && (
                       <Text style={[styles.paramTabVal, isSelected && styles.paramTabValActive]}>
-                        {latestVal} {m.unit}
+                        {latestVal}
                       </Text>
                     )}
                   </View>
@@ -507,7 +507,7 @@ export default function ChartsScreen() {
         {!loading && series.length === 0 ? (
           <View style={styles.emptyContainer}>
             <Text style={styles.emptyText}>
-              No {currentMapping?.parameterName || ''} telemetry feeds recorded in this time range.
+              No Value {currentMapping?.fieldNumber || 1} telemetry feeds recorded in this time range.
             </Text>
           </View>
         ) : (
@@ -516,12 +516,12 @@ export default function ChartsScreen() {
             <View style={styles.chartHeader}>
               <View style={styles.chartHeaderLeft}>
                 <Text style={styles.chartLabel}>
-                  {currentMapping?.parameterName} {currentMapping?.unit ? `(${currentMapping.unit})` : ''}
+                  Value {currentMapping?.fieldNumber || 1}
                 </Text>
                 {selectedPoint && (
                   <View style={[styles.badgePill, { backgroundColor: `${activeColor}18` }]}>
                     <Text style={[styles.badgePillText, { color: activeColor }]}>
-                      {selectedPoint.value} {currentMapping?.unit}
+                      {selectedPoint.value}
                     </Text>
                   </View>
                 )}
@@ -727,42 +727,148 @@ export default function ChartsScreen() {
               </Svg>
 
               {/* Floating Real-Time Hover Tooltip */}
-              {selectedPoint && (
-                <View
-                  pointerEvents="none"
-                  style={[
-                    styles.tooltip,
-                    {
-                      left: Math.min(
-                        currentWidth - 140,
-                        Math.max(padding.left, selectedPoint.x - 60)
-                      ),
-                      top: Math.max(10, selectedPoint.y - 58),
-                    },
-                  ]}
-                >
-                  <Text style={[styles.tooltipVal, { color: activeColor }]}>
-                    {selectedPoint.value} {currentMapping?.unit}
-                  </Text>
-                  <Text style={styles.tooltipTime}>
-                    {new Date(selectedPoint.time).toLocaleString([], {
-                      month: 'short',
-                      day: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit',
-                      second: '2-digit',
-                    })}
-                  </Text>
-                  {isCurrentAlert ? (
-                    <Text style={styles.tooltipAlert}>⚠️ Alert: Exceeds Threshold</Text>
-                  ) : (
-                    <Text style={styles.tooltipSafe}>✓ Safe / Normal</Text>
-                  )}
-                </View>
-              )}
+              {selectedPoint && (() => {
+                const ptItem = items.find((it) => it.timestamp === selectedPoint.time);
+                const ptParam = ptItem?.parameters?.[currentMapping?.parameterName || ''];
+                const ptSeverity = ptParam?.severity;
+
+                return (
+                  <View
+                    pointerEvents="none"
+                    style={[
+                      styles.tooltip,
+                      {
+                        left: Math.min(
+                          currentWidth - 140,
+                          Math.max(padding.left, selectedPoint.x - 60)
+                        ),
+                        top: Math.max(10, selectedPoint.y - 58),
+                      },
+                    ]}
+                  >
+                    <Text style={[styles.tooltipVal, { color: activeColor }]}>
+                      Value {currentMapping?.fieldNumber || 1}: {selectedPoint.value}
+                    </Text>
+                    <Text style={styles.tooltipTime}>
+                      {new Date(selectedPoint.time).toLocaleString([], {
+                        month: 'short',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit',
+                      })}
+                    </Text>
+                    {ptSeverity === 'DANGER' ? (
+                      <Text style={styles.tooltipDanger}>✕ Danger Level</Text>
+                    ) : ptSeverity === 'WARNING' ? (
+                      <Text style={styles.tooltipWarning}>▲ Warning Level</Text>
+                    ) : ptSeverity === 'ALERT' ? (
+                      <Text style={styles.tooltipAlert}>! Alert Level</Text>
+                    ) : (
+                      <Text style={styles.tooltipSafe}>✓ Safe / Normal</Text>
+                    )}
+                  </View>
+                );
+              })()}
             </Pressable>
           </View>
         )}
+
+        {/* Parameter Reference & Target Ranges Card */}
+        <View style={styles.referenceCard}>
+          <View style={styles.referenceHeader}>
+            <Text style={styles.referenceTitle}>Parameter Reference & Alert Thresholds</Text>
+            <Text style={styles.referenceSubtitle}>
+              WHO & standard specification targets and multi-tier alert thresholds.
+            </Text>
+          </View>
+
+          <View style={styles.refGrid}>
+            {/* Value 1: pH */}
+            <View style={styles.refItem}>
+              <View style={styles.refItemHeader}>
+                <View style={[styles.refBadge, { backgroundColor: '#eff6ff' }]}>
+                  <Text style={[styles.refBadgeText, { color: '#2563eb' }]}>Value 1</Text>
+                </View>
+                <Text style={styles.refParamTitle}>pH (pH)</Text>
+              </View>
+              <View style={styles.refTiers}>
+                <View style={styles.refTierRow}>
+                  <Text style={styles.refTierLabelNormal}>✓ Normal Target</Text>
+                  <Text style={styles.refTierVal}>6.5 – 8.5</Text>
+                </View>
+                <View style={styles.refTierRow}>
+                  <Text style={styles.refTierLabelAlert}>! Alert Level</Text>
+                  <Text style={styles.refTierVal}>&lt;6.5 or &gt;8.5</Text>
+                </View>
+                <View style={styles.refTierRow}>
+                  <Text style={styles.refTierLabelWarn}>▲ Warning Level</Text>
+                  <Text style={styles.refTierVal}>&lt;6.0 or &gt;9.0</Text>
+                </View>
+                <View style={styles.refTierRow}>
+                  <Text style={styles.refTierLabelDanger}>✕ Danger Level</Text>
+                  <Text style={styles.refTierVal}>&lt;5.5 or &gt;9.5</Text>
+                </View>
+              </View>
+            </View>
+
+            {/* Value 2: Turbidity */}
+            <View style={styles.refItem}>
+              <View style={styles.refItemHeader}>
+                <View style={[styles.refBadge, { backgroundColor: '#fffbeb' }]}>
+                  <Text style={[styles.refBadgeText, { color: '#d97706' }]}>Value 2</Text>
+                </View>
+                <Text style={styles.refParamTitle}>Turbidity (NTU)</Text>
+              </View>
+              <View style={styles.refTiers}>
+                <View style={styles.refTierRow}>
+                  <Text style={styles.refTierLabelNormal}>✓ Normal Target</Text>
+                  <Text style={styles.refTierVal}>&lt;1 NTU (preferred)</Text>
+                </View>
+                <View style={styles.refTierRow}>
+                  <Text style={styles.refTierLabelAlert}>! Alert Level</Text>
+                  <Text style={styles.refTierVal}>1 – 5 NTU</Text>
+                </View>
+                <View style={styles.refTierRow}>
+                  <Text style={styles.refTierLabelWarn}>▲ Warning Level</Text>
+                  <Text style={styles.refTierVal}>5 – 10 NTU</Text>
+                </View>
+                <View style={styles.refTierRow}>
+                  <Text style={styles.refTierLabelDanger}>✕ Danger Level</Text>
+                  <Text style={styles.refTierVal}>&gt;10 NTU</Text>
+                </View>
+              </View>
+            </View>
+
+            {/* Value 3: TDS */}
+            <View style={styles.refItem}>
+              <View style={styles.refItemHeader}>
+                <View style={[styles.refBadge, { backgroundColor: '#ecfdf5' }]}>
+                  <Text style={[styles.refBadgeText, { color: '#059669' }]}>Value 3</Text>
+                </View>
+                <Text style={styles.refParamTitle}>TDS (mg/L / ppm)</Text>
+              </View>
+              <View style={styles.refTiers}>
+                <View style={styles.refTierRow}>
+                  <Text style={styles.refTierLabelNormal}>✓ Normal Target</Text>
+                  <Text style={styles.refTierVal}>&lt;600 ppm</Text>
+                </View>
+                <View style={styles.refTierRow}>
+                  <Text style={styles.refTierLabelAlert}>! Alert Level</Text>
+                  <Text style={styles.refTierVal}>600 – 1000 ppm</Text>
+                </View>
+                <View style={styles.refTierRow}>
+                  <Text style={styles.refTierLabelWarn}>▲ Warning Level</Text>
+                  <Text style={styles.refTierVal}>1000 – 1500 ppm</Text>
+                </View>
+                <View style={styles.refTierRow}>
+                  <Text style={styles.refTierLabelDanger}>✕ Danger Level</Text>
+                  <Text style={styles.refTierVal}>&gt;1500 ppm</Text>
+                </View>
+              </View>
+            </View>
+          </View>
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -995,6 +1101,18 @@ const styles = StyleSheet.create({
   },
   tooltipAlert: {
     fontSize: 9,
+    color: '#d97706',
+    fontWeight: '700',
+    marginTop: 3,
+  },
+  tooltipWarning: {
+    fontSize: 9,
+    color: '#ea580c',
+    fontWeight: '700',
+    marginTop: 3,
+  },
+  tooltipDanger: {
+    fontSize: 9,
     color: '#dc2626',
     fontWeight: '700',
     marginTop: 3,
@@ -1004,5 +1122,104 @@ const styles = StyleSheet.create({
     color: '#16a34a',
     fontWeight: '700',
     marginTop: 3,
+  },
+  referenceCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    padding: 16,
+    gap: 14,
+    shadowColor: '#000',
+    shadowOpacity: 0.03,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+  },
+  referenceHeader: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
+    paddingBottom: 10,
+    gap: 2,
+  },
+  referenceTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#0f172a',
+  },
+  referenceSubtitle: {
+    fontSize: 11,
+    color: '#64748b',
+  },
+  refGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  refItem: {
+    flex: 1,
+    minWidth: 260,
+    backgroundColor: '#f8fafc',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    padding: 12,
+    gap: 10,
+  },
+  refItemHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingBottom: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
+  },
+  refBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  refBadgeText: {
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  refParamTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#1e293b',
+  },
+  refTiers: {
+    gap: 5,
+  },
+  refTierRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 2,
+  },
+  refTierLabelNormal: {
+    fontSize: 11,
+    color: '#16a34a',
+    fontWeight: '600',
+  },
+  refTierLabelAlert: {
+    fontSize: 11,
+    color: '#d97706',
+    fontWeight: '600',
+  },
+  refTierLabelWarn: {
+    fontSize: 11,
+    color: '#ea580c',
+    fontWeight: '600',
+  },
+  refTierLabelDanger: {
+    fontSize: 11,
+    color: '#dc2626',
+    fontWeight: '700',
+  },
+  refTierVal: {
+    fontSize: 11,
+    color: '#334155',
+    fontWeight: '700',
+    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
   },
 });

@@ -15,23 +15,36 @@ export function StatusBadge({ status, size = 'small' }: StatusBadgeProps) {
   switch (status) {
     case 'Online':
     case 'Safe':
+    case 'Normal':
       badgeStyle = styles.successBadge;
       textStyle = styles.successText;
       dotStyle = styles.successDot;
-      label = status === 'Safe' ? '✓ Safe' : '● Online';
+      label = status === 'Online' ? '● Online' : '✓ Safe';
+      break;
+    case 'Alert':
+      badgeStyle = styles.alertBadge;
+      textStyle = styles.alertText;
+      dotStyle = styles.alertDot;
+      label = '! Alert';
+      break;
+    case 'Warning':
+      badgeStyle = styles.warningBadge;
+      textStyle = styles.warningText;
+      dotStyle = styles.warningDot;
+      label = '▲ Warning';
+      break;
+    case 'Danger':
+    case 'Critical':
+      badgeStyle = styles.dangerBadge;
+      textStyle = styles.dangerText;
+      dotStyle = styles.dangerDot;
+      label = '✕ Danger';
       break;
     case 'Offline':
       badgeStyle = styles.dangerBadge;
       textStyle = styles.dangerText;
       dotStyle = styles.dangerDot;
       label = '○ Offline';
-      break;
-    case 'Warning':
-    case 'Alert':
-      badgeStyle = styles.warningBadge;
-      textStyle = styles.warningText;
-      dotStyle = styles.warningDot;
-      label = '▲ Warning';
       break;
     case 'No Recent Data':
       badgeStyle = styles.neutralBadge;
@@ -104,14 +117,26 @@ const styles = StyleSheet.create({
   },
   // Warning
   warningBadge: {
+    backgroundColor: '#ffedd5',
+    borderColor: '#fed7aa',
+    borderWidth: 1,
+  },
+  warningText: {
+    color: '#c2410c',
+  },
+  warningDot: {
+    backgroundColor: '#ea580c',
+  },
+  // Alert
+  alertBadge: {
     backgroundColor: '#fef3c7',
     borderColor: '#fde047',
     borderWidth: 1,
   },
-  warningText: {
+  alertText: {
     color: '#b45309',
   },
-  warningDot: {
+  alertDot: {
     backgroundColor: '#d97706',
   },
   // Neutral

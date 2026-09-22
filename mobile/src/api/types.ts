@@ -47,7 +47,7 @@ export type DeviceSummary = {
   branch?: string;
   unit?: string;
   location?: string;
-  status: 'Online' | 'Offline' | 'Warning' | 'No Recent Data';
+  status: 'Online' | 'Offline' | 'Warning' | 'Danger' | 'No Recent Data';
   lastDataReceived: string | null;
   offlineThresholdMinutes: number;
   fieldMappings: FieldMapping[];
@@ -69,6 +69,8 @@ export type TelemetryParameter = {
   unit: string;
   minThreshold?: number | null;
   maxThreshold?: number | null;
+  severity?: 'NORMAL' | 'ALERT' | 'WARNING' | 'DANGER';
+  targetDesc?: string;
 };
 
 export type TelemetryRecord = {
@@ -76,6 +78,9 @@ export type TelemetryRecord = {
   timestamp: string;
   parameters: Record<string, TelemetryParameter>;
   alerts: string[];
+  severity?: 'NORMAL' | 'ALERT' | 'WARNING' | 'DANGER';
+  status?: 'Safe' | 'Alert' | 'Warning' | 'Danger' | string;
+  isSafe?: boolean;
   isWarning: boolean;
   raw?: any;
 };
@@ -83,7 +88,7 @@ export type TelemetryRecord = {
 export type DeviceLiveResponse = {
   deviceId: string;
   name: string;
-  status: 'Online' | 'Offline' | 'Warning' | 'No Recent Data';
+  status: 'Online' | 'Offline' | 'Warning' | 'Danger' | 'No Recent Data';
   telemetry: TelemetryRecord | null;
   isStale: boolean;
   fieldMappings: FieldMapping[];

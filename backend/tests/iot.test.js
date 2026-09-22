@@ -23,29 +23,33 @@ async function runTests() {
     entry_id: 101,
     created_at: new Date().toISOString(),
     field1: '7.4',
-    field2: '1.8',
-    field3: '220',
+    field2: '0.8', // Normal target: < 1 NTU
+    field3: '220', // Normal target: < 600 ppm
   };
 
   const telemetrySafe = ioTDataService.mapFeedToTelemetry(mockDevice, rawFeedSafe);
   assert.strictEqual(telemetrySafe.parameters.pH.value, 7.4);
-  assert.strictEqual(telemetrySafe.parameters.Turbidity.value, 1.8);
+  assert.strictEqual(telemetrySafe.parameters.Turbidity.value, 0.8);
   assert.strictEqual(telemetrySafe.parameters.TDS.value, 220);
   assert.strictEqual(telemetrySafe.isWarning, false, 'Safe reading should not trigger warnings');
+  assert.strictEqual(telemetrySafe.severity, 'NORMAL');
+  assert.strictEqual(telemetrySafe.status, 'Safe');
   assert.strictEqual(telemetrySafe.alerts.length, 0);
 
   const rawFeedAlert = {
     entry_id: 102,
     created_at: new Date().toISOString(),
-    field1: '9.2', // Above max 8.5
-    field2: '6.5', // Above max 5.0
+    field1: '9.2', // Warning level (<6.0 or >9.0)
+    field2: '6.5', // Warning level (5-10 NTU)
     field3: '220',
   };
 
   const telemetryAlert = ioTDataService.mapFeedToTelemetry(mockDevice, rawFeedAlert);
   assert.strictEqual(telemetryAlert.isWarning, true, 'Out of bounds values should trigger warning');
+  assert.strictEqual(telemetryAlert.severity, 'WARNING');
+  assert.strictEqual(telemetryAlert.status, 'Warning');
   assert.strictEqual(telemetryAlert.alerts.length, 2);
-  console.log('✓ IoTDataService field mapping and threshold alerts verified.\n');
+  console.log('✓ IoTDataService field mapping and tiered WHO threshold alerts verified.\n');
 
   // Test 2: Device Status Calculation
   console.log('Test 2: Verify Dynamic Device Status Calculation...');
@@ -60,9 +64,36 @@ async function runTests() {
   const offlineStatus = ioTDataService.calculateDeviceStatus(fortyMinutesAgo, 30, false);
   assert.strictEqual(offlineStatus, 'Offline');
 
+  const dangerStatus = ioTDataService.calculateDeviceStatus(now, 30, false, 'DANGER');
+  assert.strictEqual(dangerStatus, 'Danger');
+
   const noDataStatus = ioTDataService.calculateDeviceStatus(null, 30, false);
   assert.strictEqual(noDataStatus, 'No Recent Data');
-  console.log('✓ Device status calculation (Online, Warning, Offline, No Data) verified.\n');
+  console.log('✓ Device status calculation (Online, Warning, Danger, Offline, No Data) verified.\n');
+
+  // Test 2b: WHO 4-Tier Water Alert Parameter Engine
+  console.log('Test 2b: Verify WHO 4-Tier Water Alert Parameter Engine...');
+  const { evaluateWaterParameter } = require('../src/services/iot/waterAlerts');
+
+  // pH checks
+  assert.strictEqual(evaluateWaterParameter('pH', 7.2).severity, 'NORMAL');
+  assert.strictEqual(evaluateWaterParameter('pH', 8.6).severity, 'ALERT');
+  assert.strictEqual(evaluateWaterParameter('pH', 9.2).severity, 'WARNING');
+  assert.strictEqual(evaluateWaterParameter('pH', 9.8).severity, 'DANGER');
+  assert.strictEqual(evaluateWaterParameter('pH', 5.2).severity, 'DANGER');
+
+  // Turbidity checks
+  assert.strictEqual(evaluateWaterParameter('Turbidity', 0.8).severity, 'NORMAL');
+  assert.strictEqual(evaluateWaterParameter('Turbidity', 3.0).severity, 'ALERT');
+  assert.strictEqual(evaluateWaterParameter('Turbidity', 8.0).severity, 'WARNING');
+  assert.strictEqual(evaluateWaterParameter('Turbidity', 15.0).severity, 'DANGER');
+
+  // TDS checks
+  assert.strictEqual(evaluateWaterParameter('TDS', 450).severity, 'NORMAL');
+  assert.strictEqual(evaluateWaterParameter('TDS', 750).severity, 'ALERT');
+  assert.strictEqual(evaluateWaterParameter('TDS', 1250).severity, 'WARNING');
+  assert.strictEqual(evaluateWaterParameter('TDS', 1800).severity, 'DANGER');
+  console.log('✓ WHO 4-tier water alert engine (Normal, Alert, Warning, Danger) fully verified.\n');
 
   // Test 3: In-Memory Cache and Request Deduplication
   console.log('Test 3: Verify Caching & Request Coalescing...');

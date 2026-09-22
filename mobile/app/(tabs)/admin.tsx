@@ -580,7 +580,7 @@ export default function AdminScreen() {
               activeOpacity={0.7}
             >
               <Text style={[styles.navTabText, activeTab === 'companies' && styles.navTabTextActive]}>
-                🏢 Companies ({companies.length})
+                Companies ({companies.length})
               </Text>
             </TouchableOpacity>
 
@@ -590,7 +590,7 @@ export default function AdminScreen() {
               activeOpacity={0.7}
             >
               <Text style={[styles.navTabText, activeTab === 'branches' && styles.navTabTextActive]}>
-                🌿 Branches & Units ({companyBranches.length})
+                Branches & Units ({companyBranches.length})
               </Text>
             </TouchableOpacity>
 
@@ -662,7 +662,7 @@ export default function AdminScreen() {
                     {isSelected && <Text style={styles.activePill}>Active Focus</Text>}
                   </View>
 
-                  {c.address ? <Text style={styles.companyMeta}>📍 {c.address}</Text> : null}
+                  {c.address ? <Text style={styles.companyMeta}>Address: {c.address}</Text> : null}
                   <Text style={styles.companyMeta}>
                     Branches: <Text style={{ fontWeight: '700' }}>{bCount}</Text> · Units: <Text style={{ fontWeight: '700' }}>{totalUnits}</Text> · Manager Quota: <Text style={{ fontWeight: '700' }}>{mgrLimit} Max</Text>
                   </Text>
@@ -774,7 +774,7 @@ export default function AdminScreen() {
 
             {companyBranches.length === 0 ? (
               <View style={styles.emptyCard}>
-                <Text style={styles.emptyIcon}>🌿</Text>
+                <Text style={styles.emptyIcon}>🏢</Text>
                 <Text style={styles.emptyTitle}>No Branches Defined</Text>
                 <Text style={styles.emptyDesc}>
                   Click "+ Add Branch" above to create the first branch location for this company.
@@ -793,7 +793,7 @@ export default function AdminScreen() {
                           {branch.code ? <Text style={styles.branchCodeBadge}>{branch.code}</Text> : null}
                         </View>
                         {branch.address ? (
-                          <Text style={styles.branchAddress}>📍 {branch.address}</Text>
+                          <Text style={styles.branchAddress}>Address: {branch.address}</Text>
                         ) : null}
                       </View>
 
@@ -853,7 +853,7 @@ export default function AdminScreen() {
                       {branch.units && branch.units.length > 0 ? (
                         branch.units.map((unit) => (
                           <View key={unit.name} style={styles.unitBadge}>
-                            <Text style={styles.unitBadgeText}>🧪 {unit.name}</Text>
+                            <Text style={styles.unitBadgeText}>{unit.name}</Text>
                             {branch.units.length > 1 && (
                               <TouchableOpacity
                                 onPress={() => handleDeleteUnit(branch.name, unit.name)}
@@ -906,7 +906,7 @@ export default function AdminScreen() {
 
             {/* Active Company Banner */}
             <View style={styles.activeCompanyBanner}>
-              <Text style={styles.activeCompanyBannerTitle}>🏢 Target Organization for Devices:</Text>
+              <Text style={styles.activeCompanyBannerTitle}>Target Organization for Devices:</Text>
               <CompanySelector onCompanySelected={(cId) => loadDevices(cId)} />
             </View>
 
@@ -934,7 +934,7 @@ export default function AdminScreen() {
                           }}
                         >
                           <Text style={[styles.companyFormChipText, isSel && styles.companyFormChipTextActive]}>
-                            🌿 {b.name}
+                            {b.name}
                           </Text>
                         </TouchableOpacity>
                       );
@@ -959,7 +959,7 @@ export default function AdminScreen() {
                               onPress={() => setDeviceForm((p) => ({ ...p, unit: u.name }))}
                             >
                               <Text style={[styles.companyFormChipText, isSel && styles.companyFormChipTextActive]}>
-                                🧪 {u.name}
+                                {u.name}
                               </Text>
                             </TouchableOpacity>
                           );
@@ -1106,12 +1106,12 @@ export default function AdminScreen() {
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                         <Text style={styles.deviceAdminName}>{dev.name || dev.deviceId}</Text>
                         <StatusBadge status={dev.status || 'No Recent Data'} size="small" />
-                        {dev.branch ? <Text style={styles.branchTag}>🌿 {dev.branch}</Text> : null}
-                        {dev.unit ? <Text style={styles.unitTag}>🧪 {dev.unit}</Text> : null}
+                        {dev.branch ? <Text style={styles.branchTag}>Branch: {dev.branch}</Text> : null}
+                        {dev.unit ? <Text style={styles.unitTag}>Unit: {dev.unit}</Text> : null}
                       </View>
                       <Text style={styles.deviceAdminMeta}>
                         Hardware ID: {dev.deviceId} · Channel: {dev.channelId}
-                        {dev.location ? ` · 📍 ${dev.location}` : ''}
+                        {dev.location ? ` · Location: ${dev.location}` : ''}
                       </Text>
                       <Text style={styles.deviceAdminSubMeta}>
                         Manager:{' '}
@@ -1246,7 +1246,7 @@ export default function AdminScreen() {
                           }}
                         >
                           <Text style={[styles.companyFormChipText, isSel && styles.companyFormChipTextActive]}>
-                            🌿 {b.name}
+                            {b.name}
                           </Text>
                         </TouchableOpacity>
                       );
@@ -1270,7 +1270,7 @@ export default function AdminScreen() {
                               onPress={() => setManagerForm((p) => ({ ...p, unit: u.name }))}
                             >
                               <Text style={[styles.companyFormChipText, isSel && styles.companyFormChipTextActive]}>
-                                🧪 {u.name}
+                                {u.name}
                               </Text>
                             </TouchableOpacity>
                           );
@@ -1329,8 +1329,8 @@ export default function AdminScreen() {
                     </View>
                     <Text style={styles.userEmail}>{u.email}</Text>
                     <Text style={styles.userMeta}>
-                      {u.branch ? `🌿 Branch: ${u.branch}` : 'All Branches'}
-                      {u.unit ? ` · 🧪 Unit: ${u.unit}` : ''}
+                      {u.branch ? `Branch: ${u.branch}` : 'All Branches'}
+                      {u.unit ? ` · Unit: ${u.unit}` : ''}
                       {` · Active: ${String(u.isActive)}`}
                     </Text>
                   </View>

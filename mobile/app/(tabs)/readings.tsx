@@ -180,7 +180,7 @@ export default function ReadingsScreen() {
                   onPress={() => setSelectedDeviceId(d.id)}
                 >
                   <Text style={[styles.deviceTabText, selectedDeviceId === d.id && styles.deviceTabTextActive]}>
-                    {d.name || d.deviceId} {d.branch ? `(🌿 ${d.branch})` : ''}
+                    {d.name || d.deviceId} {d.branch ? `(Branch: ${d.branch})` : ''}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -243,10 +243,25 @@ export default function ReadingsScreen() {
             showsVerticalScrollIndicator
           >
             {sortedItems.map((item, idx) => {
-              const isSafe = !item.alerts || item.alerts.length === 0;
+              const readingStatus = item.status || (item.alerts && item.alerts.length > 0 ? 'Warning' : 'Safe');
+              const isDanger = item.severity === 'DANGER' || readingStatus === 'Danger';
+              const isWarning = item.severity === 'WARNING' || readingStatus === 'Warning';
+              const isAlert = item.severity === 'ALERT' || readingStatus === 'Alert';
 
               return (
-                <View key={item.id || idx} style={[styles.mobileCard, !isSafe && styles.mobileCardAlert]}>
+                <View
+                  key={item.id || idx}
+                  style={[
+                    styles.mobileCard,
+                    isDanger
+                      ? styles.mobileCardDanger
+                      : isWarning
+                      ? styles.mobileCardWarning
+                      : isAlert
+                      ? styles.mobileCardAlert
+                      : null,
+                  ]}
+                >
                   {/* Card Header: Timestamp + Status */}
                   <View style={styles.mobileCardHeader}>
                     <View style={styles.timestampRow}>
@@ -255,38 +270,54 @@ export default function ReadingsScreen() {
                         {new Date(item.timestamp).toLocaleString([], {
                           month: 'short',
                           day: 'numeric',
+                          year: 'numeric',
                           hour: '2-digit',
                           minute: '2-digit',
                           second: '2-digit',
                         })}
                       </Text>
                     </View>
-                    <StatusBadge status={isSafe ? 'Safe' : 'Alert'} size="small" />
+                    <StatusBadge status={readingStatus} size="small" />
                   </View>
 
                   {/* Metrics Row: Fits on any phone width without horizontal scrolling */}
                   <View style={styles.metricsGrid}>
-                    {displayMappings.map((m) => {
+                    {displayMappings.map((m, mIdx) => {
                       const param = item.parameters?.[m.parameterName];
                       const val = param?.value;
-                      const hasAlert =
-                        typeof val === 'number' &&
-                        ((m.minThreshold !== null && m.minThreshold !== undefined && val < m.minThreshold) ||
-                          (m.maxThreshold !== null && m.maxThreshold !== undefined && val > m.maxThreshold));
-                      const paramColor = getParamColor(m.parameterName);
+                      const severity = param?.severity;
+                      const isParamDanger = severity === 'DANGER';
+                      const isParamWarn = severity === 'WARNING';
+                      const isParamAlert = severity === 'ALERT';
+
+                      const boxStyle = isParamDanger
+                        ? styles.metricBoxDanger
+                        : isParamWarn
+                        ? styles.metricBoxWarn
+                        : isParamAlert
+                        ? styles.metricBoxAlert
+                        : null;
+
+                      const valColor = isParamDanger
+                        ? '#dc2626'
+                        : isParamWarn
+                        ? '#ea580c'
+                        : isParamAlert
+                        ? '#d97706'
+                        : '#0f172a';
 
                       return (
                         <View
-                          key={m.parameterName}
-                          style={[styles.metricBox, hasAlert && styles.metricBoxAlert]}
+                          key={m.parameterName || mIdx}
+                          style={[styles.metricBox, boxStyle]}
                         >
                           <Text style={styles.metricParamName}>
-                            {m.parameterName} {m.unit ? `(${m.unit})` : ''}
+                            Value {m.fieldNumber || mIdx + 1}
                           </Text>
                           <Text
                             style={[
                               styles.metricValue,
-                              { color: hasAlert ? '#dc2626' : paramColor },
+                              { color: valColor },
                             ]}
                           >
                             {val !== null && val !== undefined ? `${val}` : '--'}
@@ -304,12 +335,12 @@ export default function ReadingsScreen() {
           <View style={styles.tableCard}>
             <ScrollView horizontal showsHorizontalScrollIndicator={true}>
               <View style={{ minWidth: Math.max(520, width - 48) }}>
-                {/* Table Header (Alerts column removed) */}
+                {/* Table Header: Only Date / Time, Value 1, Value 2, Value 3, Status */}
                 <View style={styles.tableHeaderRow}>
-                  <Text style={[styles.tableHeaderCell, { width: 180 }]}>Timestamp</Text>
-                  {displayMappings.map((m) => (
-                    <Text key={m.parameterName} style={[styles.tableHeaderCell, { width: 120 }]}>
-                      {m.parameterName} {m.unit ? `(${m.unit})` : ''}
+                  <Text style={[styles.tableHeaderCell, { width: 180 }]}>Date / Time</Text>
+                  {displayMappings.map((m, mIdx) => (
+                    <Text key={m.parameterName || mIdx} style={[styles.tableHeaderCell, { width: 120 }]}>
+                      Value {m.fieldNumber || mIdx + 1}
                     </Text>
                   ))}
                   <Text style={[styles.tableHeaderCell, { width: 100 }]}>Status</Text>
@@ -318,7 +349,7 @@ export default function ReadingsScreen() {
                 {/* Table Body */}
                 <ScrollView style={{ maxHeight: 480 }} nestedScrollEnabled showsVerticalScrollIndicator>
                   {sortedItems.map((item, idx) => {
-                    const isSafe = !item.alerts || item.alerts.length === 0;
+                    const readingStatus = item.status || (item.alerts && item.alerts.length > 0 ? 'Warning' : 'Safe');
 
                     return (
                       <View
@@ -329,27 +360,30 @@ export default function ReadingsScreen() {
                           {new Date(item.timestamp).toLocaleString([], {
                             month: 'short',
                             day: 'numeric',
+                            year: 'numeric',
                             hour: '2-digit',
                             minute: '2-digit',
                             second: '2-digit',
                           })}
                         </Text>
 
-                        {displayMappings.map((m) => {
+                        {displayMappings.map((m, mIdx) => {
                           const param = item.parameters?.[m.parameterName];
                           const val = param?.value;
-                          const hasAlert =
-                            typeof val === 'number' &&
-                            ((m.minThreshold !== null && m.minThreshold !== undefined && val < m.minThreshold) ||
-                              (m.maxThreshold !== null && m.maxThreshold !== undefined && val > m.maxThreshold));
+                          const severity = param?.severity;
+                          const isParamDanger = severity === 'DANGER';
+                          const isParamWarn = severity === 'WARNING';
+                          const isParamAlert = severity === 'ALERT';
 
                           return (
                             <Text
-                              key={m.parameterName}
+                              key={m.parameterName || mIdx}
                               style={[
                                 styles.tableCell,
                                 { width: 120, fontWeight: '700' },
-                                hasAlert && styles.cellAlert,
+                                isParamDanger && styles.cellDanger,
+                                isParamWarn && styles.cellWarn,
+                                isParamAlert && styles.cellAlert,
                               ]}
                             >
                               {val !== null && val !== undefined ? `${val}` : '--'}
@@ -358,7 +392,7 @@ export default function ReadingsScreen() {
                         })}
 
                         <View style={{ width: 100, justifyContent: 'center' }}>
-                          <StatusBadge status={isSafe ? 'Safe' : 'Alert'} size="small" />
+                          <StatusBadge status={readingStatus} size="small" />
                         </View>
                       </View>
                     );
@@ -544,8 +578,16 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
   },
   mobileCardAlert: {
+    borderColor: '#fde68a',
+    backgroundColor: '#fffdf5',
+  },
+  mobileCardWarning: {
+    borderColor: '#fed7aa',
+    backgroundColor: '#fffaf5',
+  },
+  mobileCardDanger: {
     borderColor: '#fca5a5',
-    backgroundColor: '#fffbfb',
+    backgroundColor: '#fff5f5',
   },
   mobileCardHeader: {
     flexDirection: 'row',
@@ -583,8 +625,16 @@ const styles = StyleSheet.create({
     borderColor: '#f1f5f9',
   },
   metricBoxAlert: {
+    backgroundColor: '#fffbeb',
+    borderColor: '#fde68a',
+  },
+  metricBoxWarn: {
+    backgroundColor: '#fff7ed',
+    borderColor: '#fed7aa',
+  },
+  metricBoxDanger: {
     backgroundColor: '#fef2f2',
-    borderColor: '#fecaca',
+    borderColor: '#fca5a5',
   },
   metricParamName: {
     fontSize: 10,
@@ -636,6 +686,12 @@ const styles = StyleSheet.create({
     color: '#0f172a',
   },
   cellAlert: {
+    color: '#d97706',
+  },
+  cellWarn: {
+    color: '#ea580c',
+  },
+  cellDanger: {
     color: '#dc2626',
   },
 });

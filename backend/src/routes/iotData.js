@@ -222,10 +222,10 @@ iotRouter.get(
           ];
 
       const headerCols = ['Timestamp', 'Device ID', 'Device Name'];
-      for (const m of mappings) {
-        headerCols.push(`${m.parameterName}${m.unit ? ` (${m.unit})` : ''}`);
-      }
-      headerCols.push('Status', 'Alerts');
+      mappings.forEach((m, idx) => {
+        headerCols.push(`Value ${m.fieldNumber || idx + 1}`);
+      });
+      headerCols.push('Status');
 
       const csvRows = [headerCols.join(',')];
 
@@ -241,9 +241,8 @@ iotRouter.get(
           row.push(val !== null && val !== undefined ? String(val) : '');
         }
 
-        const isSafe = !item.alerts || item.alerts.length === 0;
-        row.push(isSafe ? '"Normal"' : '"Alert"');
-        row.push(`"${(item.alerts || []).join('; ').replace(/"/g, '""')}"`);
+        const readingStatus = item.status || (item.alerts && item.alerts.length > 0 ? 'Warning' : 'Safe');
+        row.push(`"${readingStatus}"`);
 
         csvRows.push(row.join(','));
       }
