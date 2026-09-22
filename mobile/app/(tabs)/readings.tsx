@@ -28,7 +28,6 @@ export default function ReadingsScreen() {
   const { width } = useWindowDimensions();
 
   const isMobile = width < 650;
-  const [viewMode, setViewMode] = useState<'cards' | 'table'>(isMobile ? 'cards' : 'table');
 
   const [devices, setDevices] = useState<DeviceSummary[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null);
@@ -188,28 +187,11 @@ export default function ReadingsScreen() {
           </View>
         )}
 
-        {/* Mobile View Toggle & Export Bar */}
+        {/* Table Toolbar & Export Bar */}
         <View style={styles.toolbar}>
-          {/* Toggle between Card View and Table View */}
-          <View style={styles.viewToggleGroup}>
-            <TouchableOpacity
-              style={[styles.viewToggleBtn, viewMode === 'cards' && styles.viewToggleBtnActive]}
-              onPress={() => setViewMode('cards')}
-            >
-              <Text style={[styles.viewToggleText, viewMode === 'cards' && styles.viewToggleTextActive]}>
-                📱 Mobile Cards
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.viewToggleBtn, viewMode === 'table' && styles.viewToggleBtnActive]}
-              onPress={() => setViewMode('table')}
-            >
-              <Text style={[styles.viewToggleText, viewMode === 'table' && styles.viewToggleTextActive]}>
-                📄 Table
-              </Text>
-            </TouchableOpacity>
-          </View>
+          <Text style={styles.recordCountLabel}>
+            Telemetry Feed Table ({sortedItems.length} records)
+          </Text>
 
           <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
             <TouchableOpacity style={styles.refreshButton} onPress={loadTelemetry} disabled={loading}>
@@ -230,108 +212,12 @@ export default function ReadingsScreen() {
         {error ? <Text style={styles.errorText}>{error}</Text> : null}
         {loading && <ActivityIndicator style={{ marginVertical: 12 }} />}
 
-        {/* DATA DISPLAY: Mobile Cards (NO HORIZONTAL SCROLL) OR Traditional Table */}
+        {/* DATA DISPLAY: Direct Table View */}
         {!loading && sortedItems.length === 0 ? (
           <View style={styles.emptyBox}>
             <Text style={styles.emptyText}>No telemetry records found in this time window.</Text>
           </View>
-        ) : viewMode === 'cards' ? (
-          /* MOBILE CARD VIEW: Everything fits perfectly without horizontal scrolling */
-          <ScrollView
-            style={styles.cardsScrollView}
-            contentContainerStyle={styles.cardsContainer}
-            showsVerticalScrollIndicator
-          >
-            {sortedItems.map((item, idx) => {
-              const readingStatus = item.status || (item.alerts && item.alerts.length > 0 ? 'Warning' : 'Safe');
-              const isDanger = item.severity === 'DANGER' || readingStatus === 'Danger';
-              const isWarning = item.severity === 'WARNING' || readingStatus === 'Warning';
-              const isAlert = item.severity === 'ALERT' || readingStatus === 'Alert';
-
-              return (
-                <View
-                  key={item.id || idx}
-                  style={[
-                    styles.mobileCard,
-                    isDanger
-                      ? styles.mobileCardDanger
-                      : isWarning
-                      ? styles.mobileCardWarning
-                      : isAlert
-                      ? styles.mobileCardAlert
-                      : null,
-                  ]}
-                >
-                  {/* Card Header: Timestamp + Status */}
-                  <View style={styles.mobileCardHeader}>
-                    <View style={styles.timestampRow}>
-                      <Text style={styles.clockIcon}>🕒</Text>
-                      <Text style={styles.mobileCardTimestamp}>
-                        {new Date(item.timestamp).toLocaleString([], {
-                          month: 'short',
-                          day: 'numeric',
-                          year: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit',
-                          second: '2-digit',
-                        })}
-                      </Text>
-                    </View>
-                    <StatusBadge status={readingStatus} size="small" />
-                  </View>
-
-                  {/* Metrics Row: Fits on any phone width without horizontal scrolling */}
-                  <View style={styles.metricsGrid}>
-                    {displayMappings.map((m, mIdx) => {
-                      const param = item.parameters?.[m.parameterName];
-                      const val = param?.value;
-                      const severity = param?.severity;
-                      const isParamDanger = severity === 'DANGER';
-                      const isParamWarn = severity === 'WARNING';
-                      const isParamAlert = severity === 'ALERT';
-
-                      const boxStyle = isParamDanger
-                        ? styles.metricBoxDanger
-                        : isParamWarn
-                        ? styles.metricBoxWarn
-                        : isParamAlert
-                        ? styles.metricBoxAlert
-                        : null;
-
-                      const valColor = isParamDanger
-                        ? '#dc2626'
-                        : isParamWarn
-                        ? '#ea580c'
-                        : isParamAlert
-                        ? '#d97706'
-                        : '#0f172a';
-
-                      return (
-                        <View
-                          key={m.parameterName || mIdx}
-                          style={[styles.metricBox, boxStyle]}
-                        >
-                          <Text style={styles.metricParamName}>
-                            Value {m.fieldNumber || mIdx + 1}
-                          </Text>
-                          <Text
-                            style={[
-                              styles.metricValue,
-                              { color: valColor },
-                            ]}
-                          >
-                            {val !== null && val !== undefined ? `${val}` : '--'}
-                          </Text>
-                        </View>
-                      );
-                    })}
-                  </View>
-                </View>
-              );
-            })}
-          </ScrollView>
         ) : (
-          /* TABLE VIEW: (Horizontal scroll available if user chooses table mode) */
           <View style={styles.tableCard}>
             <ScrollView horizontal showsHorizontalScrollIndicator={true}>
               <View style={{ minWidth: Math.max(520, width - 48) }}>
@@ -347,7 +233,7 @@ export default function ReadingsScreen() {
                 </View>
 
                 {/* Table Body */}
-                <ScrollView style={{ maxHeight: 480 }} nestedScrollEnabled showsVerticalScrollIndicator>
+                <ScrollView style={{ maxHeight: 520 }} nestedScrollEnabled showsVerticalScrollIndicator>
                   {sortedItems.map((item, idx) => {
                     const readingStatus = item.status || (item.alerts && item.alerts.length > 0 ? 'Warning' : 'Safe');
 
@@ -489,32 +375,10 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 6,
   },
-  viewToggleGroup: {
-    flexDirection: 'row',
-    backgroundColor: '#e2e8f0',
-    borderRadius: 8,
-    padding: 2,
-  },
-  viewToggleBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  viewToggleBtnActive: {
-    backgroundColor: '#ffffff',
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 2,
-    shadowOffset: { width: 0, height: 1 },
-  },
-  viewToggleText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#64748b',
-  },
-  viewToggleTextActive: {
-    color: '#0f172a',
+  recordCountLabel: {
+    fontSize: 13,
     fontWeight: '700',
+    color: '#1e293b',
   },
   refreshButton: {
     backgroundColor: '#fff',
@@ -556,96 +420,6 @@ const styles = StyleSheet.create({
     color: '#94a3b8',
     fontSize: 13,
     fontStyle: 'italic',
-  },
-  // Mobile Card Styles (No horizontal scrolling!)
-  cardsScrollView: {
-    flex: 1,
-  },
-  cardsContainer: {
-    gap: 10,
-    paddingBottom: 24,
-  },
-  mobileCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    padding: 12,
-    gap: 8,
-    shadowColor: '#000',
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-  },
-  mobileCardAlert: {
-    borderColor: '#fde68a',
-    backgroundColor: '#fffdf5',
-  },
-  mobileCardWarning: {
-    borderColor: '#fed7aa',
-    backgroundColor: '#fffaf5',
-  },
-  mobileCardDanger: {
-    borderColor: '#fca5a5',
-    backgroundColor: '#fff5f5',
-  },
-  mobileCardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingBottom: 6,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
-  },
-  timestampRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-  },
-  clockIcon: {
-    fontSize: 12,
-  },
-  mobileCardTimestamp: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#1e293b',
-  },
-  metricsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  metricBox: {
-    flex: 1,
-    minWidth: 90,
-    backgroundColor: '#f8fafc',
-    borderRadius: 8,
-    padding: 8,
-    borderWidth: 1,
-    borderColor: '#f1f5f9',
-  },
-  metricBoxAlert: {
-    backgroundColor: '#fffbeb',
-    borderColor: '#fde68a',
-  },
-  metricBoxWarn: {
-    backgroundColor: '#fff7ed',
-    borderColor: '#fed7aa',
-  },
-  metricBoxDanger: {
-    backgroundColor: '#fef2f2',
-    borderColor: '#fca5a5',
-  },
-  metricParamName: {
-    fontSize: 10,
-    color: '#64748b',
-    fontWeight: '600',
-    textTransform: 'uppercase',
-  },
-  metricValue: {
-    fontSize: 16,
-    fontWeight: '800',
-    marginTop: 2,
   },
   // Table View Styles
   tableCard: {

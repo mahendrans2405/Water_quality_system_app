@@ -27,6 +27,7 @@ import { api } from '../../src/api/client';
 import { authStore } from '../../src/state/authStore';
 import { CompanySelector } from '../../components/company-selector';
 import { CornerDatePicker, type CornerRangeType } from '../../components/corner-date-picker';
+import { ParameterReferenceCard } from '../../components/parameter-reference-card';
 import type { DeviceSummary, TelemetryRecord, FieldMapping } from '../../src/api/types';
 
 export default function ChartsScreen() {
@@ -775,100 +776,7 @@ export default function ChartsScreen() {
         )}
 
         {/* Parameter Reference & Target Ranges Card */}
-        <View style={styles.referenceCard}>
-          <View style={styles.referenceHeader}>
-            <Text style={styles.referenceTitle}>Parameter Reference & Alert Thresholds</Text>
-            <Text style={styles.referenceSubtitle}>
-              WHO & standard specification targets and multi-tier alert thresholds.
-            </Text>
-          </View>
-
-          <View style={styles.refGrid}>
-            {/* Value 1: pH */}
-            <View style={styles.refItem}>
-              <View style={styles.refItemHeader}>
-                <View style={[styles.refBadge, { backgroundColor: '#eff6ff' }]}>
-                  <Text style={[styles.refBadgeText, { color: '#2563eb' }]}>Value 1</Text>
-                </View>
-                <Text style={styles.refParamTitle}>pH (pH)</Text>
-              </View>
-              <View style={styles.refTiers}>
-                <View style={styles.refTierRow}>
-                  <Text style={styles.refTierLabelNormal}>✓ Normal Target</Text>
-                  <Text style={styles.refTierVal}>6.5 – 8.5</Text>
-                </View>
-                <View style={styles.refTierRow}>
-                  <Text style={styles.refTierLabelAlert}>! Alert Level</Text>
-                  <Text style={styles.refTierVal}>&lt;6.5 or &gt;8.5</Text>
-                </View>
-                <View style={styles.refTierRow}>
-                  <Text style={styles.refTierLabelWarn}>▲ Warning Level</Text>
-                  <Text style={styles.refTierVal}>&lt;6.0 or &gt;9.0</Text>
-                </View>
-                <View style={styles.refTierRow}>
-                  <Text style={styles.refTierLabelDanger}>✕ Danger Level</Text>
-                  <Text style={styles.refTierVal}>&lt;5.5 or &gt;9.5</Text>
-                </View>
-              </View>
-            </View>
-
-            {/* Value 2: Turbidity */}
-            <View style={styles.refItem}>
-              <View style={styles.refItemHeader}>
-                <View style={[styles.refBadge, { backgroundColor: '#fffbeb' }]}>
-                  <Text style={[styles.refBadgeText, { color: '#d97706' }]}>Value 2</Text>
-                </View>
-                <Text style={styles.refParamTitle}>Turbidity (NTU)</Text>
-              </View>
-              <View style={styles.refTiers}>
-                <View style={styles.refTierRow}>
-                  <Text style={styles.refTierLabelNormal}>✓ Normal Target</Text>
-                  <Text style={styles.refTierVal}>&lt;1 NTU (preferred)</Text>
-                </View>
-                <View style={styles.refTierRow}>
-                  <Text style={styles.refTierLabelAlert}>! Alert Level</Text>
-                  <Text style={styles.refTierVal}>1 – 5 NTU</Text>
-                </View>
-                <View style={styles.refTierRow}>
-                  <Text style={styles.refTierLabelWarn}>▲ Warning Level</Text>
-                  <Text style={styles.refTierVal}>5 – 10 NTU</Text>
-                </View>
-                <View style={styles.refTierRow}>
-                  <Text style={styles.refTierLabelDanger}>✕ Danger Level</Text>
-                  <Text style={styles.refTierVal}>&gt;10 NTU</Text>
-                </View>
-              </View>
-            </View>
-
-            {/* Value 3: TDS */}
-            <View style={styles.refItem}>
-              <View style={styles.refItemHeader}>
-                <View style={[styles.refBadge, { backgroundColor: '#ecfdf5' }]}>
-                  <Text style={[styles.refBadgeText, { color: '#059669' }]}>Value 3</Text>
-                </View>
-                <Text style={styles.refParamTitle}>TDS (mg/L / ppm)</Text>
-              </View>
-              <View style={styles.refTiers}>
-                <View style={styles.refTierRow}>
-                  <Text style={styles.refTierLabelNormal}>✓ Normal Target</Text>
-                  <Text style={styles.refTierVal}>&lt;600 ppm</Text>
-                </View>
-                <View style={styles.refTierRow}>
-                  <Text style={styles.refTierLabelAlert}>! Alert Level</Text>
-                  <Text style={styles.refTierVal}>600 – 1000 ppm</Text>
-                </View>
-                <View style={styles.refTierRow}>
-                  <Text style={styles.refTierLabelWarn}>▲ Warning Level</Text>
-                  <Text style={styles.refTierVal}>1000 – 1500 ppm</Text>
-                </View>
-                <View style={styles.refTierRow}>
-                  <Text style={styles.refTierLabelDanger}>✕ Danger Level</Text>
-                  <Text style={styles.refTierVal}>&gt;1500 ppm</Text>
-                </View>
-              </View>
-            </View>
-          </View>
-        </View>
+        <ParameterReferenceCard />
       </ScrollView>
     </SafeAreaView>
   );

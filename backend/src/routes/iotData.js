@@ -284,10 +284,29 @@ iotRouter.get(
   async (req, res, next) => {
     try {
       const filter = {};
+      const { branch, unit } = req.query;
+
       if (req.user.role === Roles.SuperAdmin) {
         if (req.targetCompanyId) filter.company = req.targetCompanyId;
+        if (branch && branch !== 'ALL') filter.branch = branch;
+        if (unit && unit !== 'ALL') filter.unit = unit;
+      } else if (req.user.role === Roles.Company) {
+        filter.company = req.user.companyId;
+        if (branch && branch !== 'ALL') filter.branch = branch;
+        if (unit && unit !== 'ALL') filter.unit = unit;
       } else {
         filter.company = req.user.companyId;
+        if (req.user.branch) {
+          filter.branch = req.user.branch;
+        } else if (branch && branch !== 'ALL') {
+          filter.branch = branch;
+        }
+
+        if (req.user.unit) {
+          filter.unit = req.user.unit;
+        } else if (unit && unit !== 'ALL') {
+          filter.unit = unit;
+        }
       }
 
       const devices = await Device.find(filter).lean();

@@ -75,8 +75,17 @@ devicesRouter.get(
       } else {
         // Manager role: strictly scoped to company and assigned branch/unit/devices
         filter.company = req.user.companyId;
-        if (req.user.branch) filter.branch = req.user.branch;
-        if (req.user.unit) filter.unit = req.user.unit;
+        if (req.user.branch) {
+          filter.branch = req.user.branch;
+        } else if (branch) {
+          filter.branch = branch;
+        }
+
+        if (req.user.unit) {
+          filter.unit = req.user.unit;
+        } else if (unit) {
+          filter.unit = unit;
+        }
         if (Array.isArray(req.user.assignedDevices) && req.user.assignedDevices.length > 0) {
           filter._id = { $in: req.user.assignedDevices };
         } else {

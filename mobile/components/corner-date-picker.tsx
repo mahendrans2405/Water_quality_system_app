@@ -60,9 +60,64 @@ export function CornerDatePicker({
     }
   };
 
+  const getTodayStr = () => new Date().toISOString().split('T')[0];
+
+  const getDaysAgoStr = (days: number) => {
+    const d = new Date();
+    d.setDate(d.getDate() - days);
+    return d.toISOString().split('T')[0];
+  };
+
+  const getNowTimeStr = () => {
+    const d = new Date();
+    const h = String(d.getHours()).padStart(2, '0');
+    const m = String(d.getMinutes()).padStart(2, '0');
+    return `${h}:${m}`;
+  };
+
+  const getDecomposedStart = () => {
+    const today = getTodayStr();
+    if (!customStart) return { date: today, time: '00:00' };
+    const [d, t] = customStart.split('T');
+    return { date: d || today, time: t ? t.substring(0, 5) : '00:00' };
+  };
+
+  const getDecomposedEnd = () => {
+    const today = getTodayStr();
+    if (!customEnd) return { date: today, time: '23:59' };
+    const [d, t] = customEnd.split('T');
+    return { date: d || today, time: t ? t.substring(0, 5) : '23:59' };
+  };
+
+  const handleStartDateChange = (newDate: string) => {
+    const { time } = getDecomposedStart();
+    onCustomStartChange(`${newDate}T${time}`);
+  };
+
+  const handleStartTimeChange = (newTime: string) => {
+    const { date } = getDecomposedStart();
+    onCustomStartChange(`${date}T${newTime}`);
+  };
+
+  const handleEndDateChange = (newDate: string) => {
+    const { time } = getDecomposedEnd();
+    onCustomEndChange(`${newDate}T${time}`);
+  };
+
+  const handleEndTimeChange = (newTime: string) => {
+    const { date } = getDecomposedEnd();
+    onCustomEndChange(`${date}T${newTime}`);
+  };
+
   const handleSelect = (val: CornerRangeType) => {
     setMenuVisible(false);
     if (val === 'custom') {
+      if (!customStart) {
+        onCustomStartChange(`${getTodayStr()}T00:00`);
+      }
+      if (!customEnd) {
+        onCustomEndChange(`${getTodayStr()}T23:59`);
+      }
       setCustomModalVisible(true);
     } else {
       onRangeChange(val);
@@ -70,6 +125,10 @@ export function CornerDatePicker({
   };
 
   const handleApply = () => {
+    const s = getDecomposedStart();
+    const e = getDecomposedEnd();
+    onCustomStartChange(`${s.date}T${s.time}`);
+    onCustomEndChange(`${e.date}T${e.time}`);
     setCustomModalVisible(false);
     onRangeChange('custom');
     onApplyCustom();
@@ -80,6 +139,9 @@ export function CornerDatePicker({
     onReset();
     onRangeChange('1d');
   };
+
+  const startDec = getDecomposedStart();
+  const endDec = getDecomposedEnd();
 
   return (
     <View style={styles.wrapper}>
@@ -121,7 +183,7 @@ export function CornerDatePicker({
         </Pressable>
       </Modal>
 
-      {/* Custom Date/Time Modal */}
+      {/* Custom Date/Time Modal with Calendar and Time Selectors */}
       <Modal
         visible={customModalVisible}
         transparent
@@ -130,57 +192,180 @@ export function CornerDatePicker({
       >
         <View style={styles.backdrop}>
           <View style={styles.customCard}>
+            {/* Header */}
             <View style={styles.customHeader}>
-              <Text style={styles.customTitle}>Custom Date & Time Window</Text>
+              <View>
+                <Text style={styles.customTitle}>Custom Calendar & Time Picker</Text>
+                <Text style={styles.customSubtitle}>
+                  Select exact date from calendar and specify hour/minute.
+                </Text>
+              </View>
               <TouchableOpacity onPress={() => setCustomModalVisible(false)}>
                 <Text style={styles.closeBtn}>✕</Text>
               </TouchableOpacity>
             </View>
 
-            <Text style={styles.customSubtitle}>
-              Select specific start and end dates/times to inspect historical records.
-            </Text>
-
-            <View style={styles.inputSection}>
-              <Text style={styles.inputLabel}>From (Start Date & Time):</Text>
-              {Platform.OS === 'web' ? (
-                // @ts-ignore
-                <input
-                  type="datetime-local"
-                  value={customStart}
-                  onChange={(e: any) => onCustomStartChange(e.target.value)}
-                  style={webInputStyle}
-                />
-              ) : (
-                <TextInput
-                  style={styles.textInput}
-                  value={customStart}
-                  placeholder="YYYY-MM-DDTHH:mm"
-                  onChangeText={onCustomStartChange}
-                />
-              )}
+            {/* Active Selected Range Preview */}
+            <View style={styles.previewBox}>
+              <Text style={styles.previewLabel}>Active Range Window:</Text>
+              <Text style={styles.previewText}>
+                {startDec.date} {startDec.time} ➔ {endDec.date} {endDec.time}
+              </Text>
             </View>
 
-            <View style={styles.inputSection}>
-              <Text style={styles.inputLabel}>To (End Date & Time):</Text>
-              {Platform.OS === 'web' ? (
-                // @ts-ignore
-                <input
-                  type="datetime-local"
-                  value={customEnd}
-                  onChange={(e: any) => onCustomEndChange(e.target.value)}
-                  style={webInputStyle}
-                />
-              ) : (
-                <TextInput
-                  style={styles.textInput}
-                  value={customEnd}
-                  placeholder="YYYY-MM-DDTHH:mm"
-                  onChangeText={onCustomEndChange}
-                />
-              )}
+            {/* FROM (Start Window) */}
+            <View style={styles.pickerSectionBox}>
+              <Text style={styles.sectionHeaderTitle}>📅 From (Start Point):</Text>
+              <View style={styles.pickerRow}>
+                {/* Calendar Date Picker */}
+                <View style={{ flex: 1.4 }}>
+                  <Text style={styles.pickerSubLabel}>Calendar Date:</Text>
+                  {Platform.OS === 'web' ? (
+                    // @ts-ignore
+                    <input
+                      type="date"
+                      value={startDec.date}
+                      onChange={(e: any) => handleStartDateChange(e.target.value)}
+                      style={webDateInputStyle}
+                    />
+                  ) : (
+                    <TextInput
+                      style={styles.textInput}
+                      value={startDec.date}
+                      placeholder="YYYY-MM-DD"
+                      onChangeText={handleStartDateChange}
+                    />
+                  )}
+                </View>
+
+                {/* Time Picker */}
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.pickerSubLabel}>Time (Clock):</Text>
+                  {Platform.OS === 'web' ? (
+                    // @ts-ignore
+                    <input
+                      type="time"
+                      value={startDec.time}
+                      onChange={(e: any) => handleStartTimeChange(e.target.value)}
+                      style={webDateInputStyle}
+                    />
+                  ) : (
+                    <TextInput
+                      style={styles.textInput}
+                      value={startDec.time}
+                      placeholder="HH:mm"
+                      onChangeText={handleStartTimeChange}
+                    />
+                  )}
+                </View>
+              </View>
+
+              {/* Start Quick Presets */}
+              <View style={styles.shortcutsRow}>
+                <TouchableOpacity
+                  style={styles.shortcutChip}
+                  onPress={() => handleStartDateChange(getTodayStr())}
+                >
+                  <Text style={styles.shortcutChipText}>Today</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.shortcutChip}
+                  onPress={() => handleStartDateChange(getDaysAgoStr(1))}
+                >
+                  <Text style={styles.shortcutChipText}>Yesterday</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.shortcutChip}
+                  onPress={() => handleStartDateChange(getDaysAgoStr(7))}
+                >
+                  <Text style={styles.shortcutChipText}>-7 Days</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.shortcutChipTime}
+                  onPress={() => handleStartTimeChange('00:00')}
+                >
+                  <Text style={styles.shortcutChipTimeText}>00:00 (Start)</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.shortcutChipTime}
+                  onPress={() => handleStartTimeChange('12:00')}
+                >
+                  <Text style={styles.shortcutChipTimeText}>12:00 (Noon)</Text>
+                </TouchableOpacity>
+              </View>
             </View>
 
+            {/* TO (End Window) */}
+            <View style={styles.pickerSectionBox}>
+              <Text style={styles.sectionHeaderTitle}>📅 To (End Point):</Text>
+              <View style={styles.pickerRow}>
+                {/* Calendar Date Picker */}
+                <View style={{ flex: 1.4 }}>
+                  <Text style={styles.pickerSubLabel}>Calendar Date:</Text>
+                  {Platform.OS === 'web' ? (
+                    // @ts-ignore
+                    <input
+                      type="date"
+                      value={endDec.date}
+                      onChange={(e: any) => handleEndDateChange(e.target.value)}
+                      style={webDateInputStyle}
+                    />
+                  ) : (
+                    <TextInput
+                      style={styles.textInput}
+                      value={endDec.date}
+                      placeholder="YYYY-MM-DD"
+                      onChangeText={handleEndDateChange}
+                    />
+                  )}
+                </View>
+
+                {/* Time Picker */}
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.pickerSubLabel}>Time (Clock):</Text>
+                  {Platform.OS === 'web' ? (
+                    // @ts-ignore
+                    <input
+                      type="time"
+                      value={endDec.time}
+                      onChange={(e: any) => handleEndTimeChange(e.target.value)}
+                      style={webDateInputStyle}
+                    />
+                  ) : (
+                    <TextInput
+                      style={styles.textInput}
+                      value={endDec.time}
+                      placeholder="HH:mm"
+                      onChangeText={handleEndTimeChange}
+                    />
+                  )}
+                </View>
+              </View>
+
+              {/* End Quick Presets */}
+              <View style={styles.shortcutsRow}>
+                <TouchableOpacity
+                  style={styles.shortcutChip}
+                  onPress={() => handleEndDateChange(getTodayStr())}
+                >
+                  <Text style={styles.shortcutChipText}>Today</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.shortcutChipTime}
+                  onPress={() => handleEndTimeChange('23:59')}
+                >
+                  <Text style={styles.shortcutChipTimeText}>23:59 (End)</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.shortcutChipTime}
+                  onPress={() => handleEndTimeChange(getNowTimeStr())}
+                >
+                  <Text style={styles.shortcutChipTimeText}>Now</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Action Buttons */}
             <View style={styles.modalActions}>
               <TouchableOpacity
                 style={[styles.applyBtn, loading && styles.btnDisabled]}
@@ -203,8 +388,8 @@ export function CornerDatePicker({
   );
 }
 
-const webInputStyle: React.CSSProperties = {
-  padding: '10px 12px',
+const webDateInputStyle: React.CSSProperties = {
+  padding: '8px 10px',
   borderRadius: '8px',
   border: '1.5px solid #cbd5e1',
   fontSize: '13px',
@@ -214,6 +399,7 @@ const webInputStyle: React.CSSProperties = {
   fontFamily: 'inherit',
   width: '100%',
   boxSizing: 'border-box',
+  cursor: 'pointer',
 };
 
 const styles = StyleSheet.create({
@@ -313,9 +499,9 @@ const styles = StyleSheet.create({
   customCard: {
     backgroundColor: '#ffffff',
     borderRadius: 18,
-    padding: 20,
+    padding: 18,
     width: '100%',
-    maxWidth: 380,
+    maxWidth: 440,
     shadowColor: '#000',
     shadowOpacity: 0.18,
     shadowRadius: 18,
@@ -325,10 +511,10 @@ const styles = StyleSheet.create({
   customHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
   },
   customTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '800',
     color: '#0f172a',
   },
@@ -339,31 +525,96 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   customSubtitle: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#64748b',
+    marginTop: 2,
   },
-  inputSection: {
-    gap: 6,
+  previewBox: {
+    backgroundColor: '#eff6ff',
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
   },
-  inputLabel: {
+  previewLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#1e40af',
+    textTransform: 'uppercase',
+  },
+  previewText: {
     fontSize: 12,
+    fontWeight: '800',
+    color: '#1d4ed8',
+    marginTop: 2,
+  },
+  pickerSectionBox: {
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 10,
+    padding: 10,
+    gap: 8,
+  },
+  sectionHeaderTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
+  pickerRow: {
+    flexDirection: 'row',
+    gap: 10,
+    alignItems: 'flex-end',
+  },
+  pickerSubLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#64748b',
+    marginBottom: 4,
+  },
+  shortcutsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 2,
+  },
+  shortcutChip: {
+    backgroundColor: '#e2e8f0',
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 4,
+  },
+  shortcutChipText: {
+    fontSize: 10,
     fontWeight: '600',
     color: '#334155',
+  },
+  shortcutChipTime: {
+    backgroundColor: '#e0e7ff',
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 4,
+  },
+  shortcutChipTimeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#3730a3',
   },
   textInput: {
     backgroundColor: '#fff',
     borderWidth: 1.5,
     borderColor: '#cbd5e1',
     borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    fontSize: 13,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    fontSize: 12,
     color: '#0f172a',
   },
   modalActions: {
     flexDirection: 'row',
     gap: 10,
-    marginTop: 8,
+    marginTop: 6,
   },
   applyBtn: {
     flex: 1,

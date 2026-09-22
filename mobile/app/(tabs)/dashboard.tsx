@@ -67,6 +67,33 @@ export default function DashboardScreen() {
     return b?.units?.map((u) => u.name) || [];
   }, [availableBranches, selectedBranch]);
 
+  // Branch-based and Unit-based manager view scoping
+  const isBranchScopedManager = isManager && Boolean(user?.branch) && !user?.unit;
+  const isUnitScopedManager = isManager && Boolean(user?.branch) && Boolean(user?.unit);
+
+  const managerBranchObj = useMemo(() => {
+    if (!user?.branch) return null;
+    return availableBranches.find((b) => b.name.toLowerCase() === user.branch?.toLowerCase()) || null;
+  }, [user?.branch, availableBranches]);
+
+  const managerUnits = useMemo(() => {
+    if (!managerBranchObj) return [];
+    return managerBranchObj.units?.map((u) => u.name) || [];
+  }, [managerBranchObj]);
+
+  // Synchronize manager scope selection
+  useEffect(() => {
+    if (isManager && user?.branch) {
+      setSelectedBranch(user.branch);
+    }
+  }, [isManager, user?.branch]);
+
+  useEffect(() => {
+    if (isManager && user?.unit) {
+      setSelectedUnit(user.unit);
+    }
+  }, [isManager, user?.unit]);
+
   async function loadDashboardData() {
     if (!targetCompanyId && !isSuperAdmin) return;
     setError(null);
@@ -213,13 +240,31 @@ export default function DashboardScreen() {
           )}
 
           {/* Manager Assigned Scope Notice */}
-          {isManager && (user?.branch || user?.unit) && (
+          {isManager && (
             <View style={styles.managerScopeNotice}>
               <Text style={styles.managerScopeNoticeText}>
-                🔒 Data Isolated View: Restricted to your assigned facility{' '}
-                <Text style={{ fontWeight: '700' }}>
-                  {user.branch ? `[Branch: ${user.branch}]` : ''} {user.unit ? `[Unit: ${user.unit}]` : ''}
-                </Text>
+                {isUnitScopedManager ? (
+                  <>
+                    🔒 Restricted Facility View:{' '}
+                    <Text style={{ fontWeight: '700' }}>
+                      [Branch: {user?.branch}] [Unit: {user?.unit}]
+                    </Text>
+                  </>
+                ) : isBranchScopedManager ? (
+                  <>
+                    🌐 Branch-Wide View:{' '}
+                    <Text style={{ fontWeight: '700' }}>
+                      [Branch: {user?.branch}] (All Units in Branch)
+                    </Text>
+                  </>
+                ) : (
+                  <>
+                    🏢 Organization View:{' '}
+                    <Text style={{ fontWeight: '700' }}>
+                      All Branches & Units
+                    </Text>
+                  </>
+                )}
               </Text>
             </View>
           )}
@@ -293,6 +338,40 @@ export default function DashboardScreen() {
                 </ScrollView>
               </View>
             )}
+          </View>
+        )}
+
+        {/* Unit Filter Controls for Branch-Based Managers */}
+        {isBranchScopedManager && managerUnits.length > 0 && (
+          <View style={styles.filterSectionCard}>
+            <View style={styles.filterGroup}>
+              <Text style={styles.filterLabel}>Filter by Unit in {user?.branch}:</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterChipsRow}>
+                <TouchableOpacity
+                  style={[styles.filterChip, selectedUnit === 'ALL' && styles.filterChipActive]}
+                  onPress={() => setSelectedUnit('ALL')}
+                >
+                  <Text style={[styles.filterChipText, selectedUnit === 'ALL' && styles.filterChipTextActive]}>
+                    All Units ({managerUnits.length})
+                  </Text>
+                </TouchableOpacity>
+
+                {managerUnits.map((u) => {
+                  const isSel = selectedUnit === u;
+                  return (
+                    <TouchableOpacity
+                      key={u}
+                      style={[styles.filterChip, isSel && styles.filterChipActive]}
+                      onPress={() => setSelectedUnit(u)}
+                    >
+                      <Text style={[styles.filterChipText, isSel && styles.filterChipTextActive]}>
+                        {u}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
           </View>
         )}
 

@@ -19,6 +19,7 @@ import { authStore } from '../../src/state/authStore';
 import { CompanySelector } from '../../components/company-selector';
 import { StatusBadge } from '../../components/ui/status-badge';
 import { DeviceFieldMapper } from '../../components/device-field-mapper';
+import { ParameterReferenceCard } from '../../components/parameter-reference-card';
 import type { Branch, Company, DeviceSummary, FieldMapping, Unit } from '../../src/api/types';
 
 export default function AdminScreen() {
@@ -69,11 +70,20 @@ export default function AdminScreen() {
     description: '',
   });
 
-  const [managerForm, setManagerForm] = useState({
+  const [managerForm, setManagerForm] = useState<{
+    name: string;
+    email: string;
+    password: string;
+    roleName: string;
+    scopeType: 'branch' | 'unit';
+    branch: string;
+    unit: string;
+  }>({
     name: '',
     email: '',
     password: '',
     roleName: 'Manager',
+    scopeType: 'branch',
     branch: '',
     unit: '',
   });
@@ -454,22 +464,28 @@ export default function AdminScreen() {
         roleName: managerForm.roleName,
         companyId: selectedCompanyId,
         branch: managerForm.branch.trim() || undefined,
-        unit: managerForm.unit.trim() || undefined,
+        unit: managerForm.scopeType === 'unit' ? (managerForm.unit.trim() || undefined) : undefined,
       });
 
       if (res.data?.ok) {
+        const createdScopeDesc =
+          managerForm.scopeType === 'unit'
+            ? `Unit-Based (Branch: ${managerForm.branch || 'All'}, Unit: ${managerForm.unit || 'All'})`
+            : `Branch-Based (Branch: ${managerForm.branch || 'All'} - All Units)`;
+
         setManagerForm({
           name: '',
           email: '',
           password: '',
           roleName: 'Manager',
+          scopeType: 'branch',
           branch: companyBranches[0]?.name || '',
           unit: companyBranches[0]?.units?.[0]?.name || '',
         });
         await loadUsers(selectedCompanyId);
         Alert.alert(
           'Success',
-          `Manager account created!\n\nUser ID: ${managerForm.email}\nBranch: ${managerForm.branch || 'All'}\nUnit: ${managerForm.unit || 'All'}\n\nProvide these credentials to the company manager. They will have strictly view-only access to their assigned branch, unit, and devices.`
+          `Manager account created!\n\nUser ID: ${managerForm.email}\nScope: ${createdScopeDesc}\n\nProvide these credentials to the company manager. They will have strictly view-only access to their authorized telemetry.`
         );
       }
     } catch (e: any) {
@@ -1143,6 +1159,15 @@ export default function AdminScreen() {
                 </View>
               ))
             )}
+
+            {/* WHO Parameter Reference & Alert Thresholds */}
+            <View style={{ marginTop: 16 }}>
+              <ParameterReferenceCard
+                title="WHO Parameter Alert Reference"
+                subtitle="Official 4-tier alert and safety thresholds for configuring device sensor alarms."
+                showValueBadges={false}
+              />
+            </View>
           </View>
         )}
 
@@ -1228,9 +1253,39 @@ export default function AdminScreen() {
               <View style={styles.managerForm}>
                 <Text style={styles.formTitle}>Create & Provision Manager Account</Text>
                 <Text style={styles.formSubtitle}>
-                  Managers are assigned to a specific Branch and Unit, granting strictly view-only access to their authorized telemetry.
+                  Configure manager scope: Branch-Based (access to all units in the branch) or Unit-Based (strictly restricted to a single unit).
                 </Text>
 
+                {/* Scope Type Selection */}
+                <View style={styles.formSectionBox}>
+                  <Text style={styles.inputLabel}>Manager Scope Type *</Text>
+                  <View style={styles.companySelectChipRow}>
+                    <TouchableOpacity
+                      style={[styles.companyFormChip, managerForm.scopeType === 'branch' && styles.companyFormChipActive]}
+                      onPress={() => setManagerForm((p) => ({ ...p, scopeType: 'branch' }))}
+                    >
+                      <Text style={[styles.companyFormChipText, managerForm.scopeType === 'branch' && styles.companyFormChipTextActive]}>
+                        🏢 Branch-Based (All Units)
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.companyFormChip, managerForm.scopeType === 'unit' && styles.companyFormChipActive]}
+                      onPress={() => setManagerForm((p) => ({ ...p, scopeType: 'unit' }))}
+                    >
+                      <Text style={[styles.companyFormChipText, managerForm.scopeType === 'unit' && styles.companyFormChipTextActive]}>
+                        🧪 Unit-Based (Single Unit)
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                  <Text style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>
+                    {managerForm.scopeType === 'branch'
+                      ? '✓ This manager can view and switch between all units and devices in their assigned branch.'
+                      : '✓ This manager is strictly locked to viewing only their assigned unit within the branch.'}
+                  </Text>
+                </View>
+
+                {/* Branch Selection */}
                 <View style={styles.formSectionBox}>
                   <Text style={styles.inputLabel}>Assign Branch for Manager *</Text>
                   <View style={styles.companySelectChipRow}>
@@ -1254,31 +1309,40 @@ export default function AdminScreen() {
                   </View>
                 </View>
 
-                {(() => {
-                  const currBranch = companyBranches.find((b) => b.name === managerForm.branch);
-                  const units = currBranch?.units || [];
-                  return (
-                    <View style={styles.formSectionBox}>
-                      <Text style={styles.inputLabel}>Assign Unit for Manager *</Text>
-                      <View style={styles.companySelectChipRow}>
-                        {units.map((u) => {
-                          const isSel = managerForm.unit === u.name;
-                          return (
-                            <TouchableOpacity
-                              key={u.name}
-                              style={[styles.companyFormChip, isSel && styles.companyFormChipActive]}
-                              onPress={() => setManagerForm((p) => ({ ...p, unit: u.name }))}
-                            >
-                              <Text style={[styles.companyFormChipText, isSel && styles.companyFormChipTextActive]}>
-                                {u.name}
-                              </Text>
-                            </TouchableOpacity>
-                          );
-                        })}
+                {/* Unit Selection (Only if Unit-Based) */}
+                {managerForm.scopeType === 'unit' ? (
+                  (() => {
+                    const currBranch = companyBranches.find((b) => b.name === managerForm.branch);
+                    const units = currBranch?.units || [];
+                    return (
+                      <View style={styles.formSectionBox}>
+                        <Text style={styles.inputLabel}>Assign Unit for Manager *</Text>
+                        <View style={styles.companySelectChipRow}>
+                          {units.map((u) => {
+                            const isSel = managerForm.unit === u.name;
+                            return (
+                              <TouchableOpacity
+                                key={u.name}
+                                style={[styles.companyFormChip, isSel && styles.companyFormChipActive]}
+                                onPress={() => setManagerForm((p) => ({ ...p, unit: u.name }))}
+                              >
+                                <Text style={[styles.companyFormChipText, isSel && styles.companyFormChipTextActive]}>
+                                  {u.name}
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
                       </View>
-                    </View>
-                  );
-                })()}
+                    );
+                  })()
+                ) : (
+                  <View style={[styles.formSectionBox, { backgroundColor: '#f0fdf4', borderColor: '#bbf7d0' }]}>
+                    <Text style={{ fontSize: 12, color: '#166534', fontWeight: '600' }}>
+                      🌐 Branch-Wide Access: Manager will be able to monitor all units in "{managerForm.branch || 'selected branch'}".
+                    </Text>
+                  </View>
+                )}
 
                 <TextInput
                   style={[styles.input, isLimitReached && styles.inputDisabled]}
@@ -1329,8 +1393,15 @@ export default function AdminScreen() {
                     </View>
                     <Text style={styles.userEmail}>{u.email}</Text>
                     <Text style={styles.userMeta}>
-                      {u.branch ? `Branch: ${u.branch}` : 'All Branches'}
-                      {u.unit ? ` · Unit: ${u.unit}` : ''}
+                      {u.branch ? (
+                        u.unit ? (
+                          `Unit-Based: ${u.branch} · Unit: ${u.unit}`
+                        ) : (
+                          `Branch-Based: ${u.branch} (All Units)`
+                        )
+                      ) : (
+                        'Company-Wide (All Branches & Units)'
+                      )}
                       {` · Active: ${String(u.isActive)}`}
                     </Text>
                   </View>
@@ -1427,6 +1498,15 @@ export default function AdminScreen() {
               >
                 <Text style={styles.settingsLogoutBtnText}>🚪 Log Out</Text>
               </TouchableOpacity>
+            </View>
+
+            {/* WHO Parameter Reference & Alert Thresholds */}
+            <View style={{ marginTop: 16 }}>
+              <ParameterReferenceCard
+                title="Parameter Reference & Alert Thresholds"
+                subtitle="World Health Organization (WHO) and standard drinking water specification targets."
+                showValueBadges={false}
+              />
             </View>
           </View>
         )}
