@@ -1065,45 +1065,6 @@ export default function AdminScreen() {
                   </View>
                 </View>
 
-                {/* Assigned Manager */}
-                {users.filter((u) => u.role?.startsWith('Manager')).length > 0 && (
-                  <View style={{ marginTop: 4 }}>
-                    <Text style={styles.inputLabel}>Assign Responsible Manager (Optional):</Text>
-                    <View style={styles.managerSelectRow}>
-                      <TouchableOpacity
-                        style={[styles.managerChip, !deviceForm.assignedManager && styles.managerChipActive]}
-                        onPress={() => setDeviceForm((p) => ({ ...p, assignedManager: '' }))}
-                      >
-                        <Text
-                          style={[
-                            styles.managerChipText,
-                            !deviceForm.assignedManager && styles.managerChipTextActive,
-                          ]}
-                        >
-                          All Managers
-                        </Text>
-                      </TouchableOpacity>
-                      {users
-                        .filter((u) => u.role?.startsWith('Manager'))
-                        .map((mgr) => (
-                          <TouchableOpacity
-                            key={mgr.id}
-                            style={[styles.managerChip, deviceForm.assignedManager === mgr.id && styles.managerChipActive]}
-                            onPress={() => setDeviceForm((p) => ({ ...p, assignedManager: mgr.id }))}
-                          >
-                            <Text
-                              style={[
-                                styles.managerChipText,
-                                deviceForm.assignedManager === mgr.id && styles.managerChipTextActive,
-                              ]}
-                            >
-                              👤 {mgr.name}
-                            </Text>
-                          </TouchableOpacity>
-                        ))}
-                    </View>
-                  </View>
-                )}
 
                 {/* Field Mappings */}
                 <DeviceFieldMapper
