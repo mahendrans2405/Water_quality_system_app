@@ -24,6 +24,7 @@ const createUserSchema = z.object({
     companyId: z.string().min(1),
     branch: z.string().max(200).optional(),
     unit: z.string().max(200).optional(),
+    units: z.array(z.string().max(200)).optional(),   // Multi-unit assignment
     assignedDevices: z.array(z.string()).optional(),
     isActive: z.boolean().optional(),
   }),
@@ -44,6 +45,7 @@ usersRouter.post(
         companyId,
         branch,
         unit,
+        units,
         assignedDevices,
         isActive,
       } = req.validated.body;
@@ -72,6 +74,14 @@ usersRouter.post(
         await assertManagerLimitAvailable({ companyId, roleName });
       }
 
+      // Resolve effective units: if units array provided and non-empty, use it; otherwise fall back to single unit
+      const effectiveUnits = Array.isArray(units) && units.length > 0
+        ? units.map((u) => u.trim()).filter(Boolean)
+        : (unit ? [unit.trim()] : []);
+
+      // For single-unit assignment keep the `unit` field for backward compat
+      const effectiveUnit = effectiveUnits.length === 1 ? effectiveUnits[0] : (unit || '').trim();
+
       const passwordHash = await hashPassword(password);
       const user = await User.create({
         name,
@@ -80,7 +90,8 @@ usersRouter.post(
         role: role._id,
         company: roleName === Roles.SuperAdmin ? null : companyId,
         branch: (branch || '').trim(),
-        unit: (unit || '').trim(),
+        unit: effectiveUnit,
+        units: effectiveUnits,
         assignedDevices: Array.isArray(assignedDevices) ? assignedDevices : [],
         isActive: isActive ?? true,
       });
@@ -95,6 +106,7 @@ usersRouter.post(
           companyId: user.company ? String(user.company) : null,
           branch: user.branch || '',
           unit: user.unit || '',
+          units: user.units || [],
           assignedDevices: user.assignedDevices || [],
           isActive: user.isActive,
         },
@@ -130,6 +142,7 @@ usersRouter.get(
           companyId: u.company ? String(u.company) : null,
           branch: u.branch || '',
           unit: u.unit || '',
+          units: Array.isArray(u.units) && u.units.length > 0 ? u.units : (u.unit ? [u.unit] : []),
           assignedDevices: u.assignedDevices || [],
           isActive: u.isActive,
         })),

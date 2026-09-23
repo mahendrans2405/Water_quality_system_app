@@ -189,6 +189,12 @@ authRouter.post('/login', validate(loginSchema), async (req, res, next) => {
           role: roleName,
           companyId,
           permissions,
+          branch: user.branch || null,
+          unit: user.unit || null,
+          units: Array.isArray(user.units) && user.units.length > 0
+            ? user.units
+            : (user.unit ? [user.unit] : []),
+          assignedDevices: Array.isArray(user.assignedDevices) ? user.assignedDevices.map(String) : [],
         },
         tokens: { accessToken, refreshToken },
       },

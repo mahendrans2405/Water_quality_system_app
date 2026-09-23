@@ -10,6 +10,7 @@ export type AuthUser = {
   companyId: string | null;
   branch?: string;
   unit?: string;
+  units?: string[];      // Multi-unit assignment for managers
   assignedDevices?: string[];
   permissions?: string[];
 };

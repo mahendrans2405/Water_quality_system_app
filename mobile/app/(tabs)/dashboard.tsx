@@ -67,19 +67,29 @@ export default function DashboardScreen() {
     return b?.units?.map((u) => u.name) || [];
   }, [availableBranches, selectedBranch]);
 
-  // Branch-based and Unit-based manager view scoping
-  const isBranchScopedManager = isManager && Boolean(user?.branch) && !user?.unit;
-  const isUnitScopedManager = isManager && Boolean(user?.branch) && Boolean(user?.unit);
+  // Branch-based, Unit-based, and Multi-unit manager view scoping
+  const managerAssignedUnits: string[] = useMemo(() => {
+    // Prefer the units array from the user object (multi-unit support)
+    if (Array.isArray(user?.units) && user.units.length > 0) return user.units;
+    if (user?.unit) return [user.unit];
+    return [];
+  }, [user]);
+
+  const isMultiUnitManager = isManager && Boolean(user?.branch) && managerAssignedUnits.length > 1;
+  const isBranchScopedManager = isManager && Boolean(user?.branch) && managerAssignedUnits.length === 0;
+  const isUnitScopedManager = isManager && Boolean(user?.branch) && managerAssignedUnits.length === 1;
 
   const managerBranchObj = useMemo(() => {
     if (!user?.branch) return null;
     return availableBranches.find((b) => b.name.toLowerCase() === user.branch?.toLowerCase()) || null;
   }, [user?.branch, availableBranches]);
 
+  // managerUnits: units this manager is allowed to view in their unit filter
   const managerUnits = useMemo(() => {
-    if (!managerBranchObj) return [];
-    return managerBranchObj.units?.map((u) => u.name) || [];
-  }, [managerBranchObj]);
+    if (isMultiUnitManager) return managerAssignedUnits;
+    if (isBranchScopedManager && managerBranchObj) return managerBranchObj.units?.map((u) => u.name) || [];
+    return managerAssignedUnits;
+  }, [isMultiUnitManager, isBranchScopedManager, managerAssignedUnits, managerBranchObj]);
 
   // Synchronize manager scope selection
   useEffect(() => {
@@ -89,10 +99,11 @@ export default function DashboardScreen() {
   }, [isManager, user?.branch]);
 
   useEffect(() => {
-    if (isManager && user?.unit) {
-      setSelectedUnit(user.unit);
+    // For single-unit managers, lock the unit filter
+    if (isUnitScopedManager && managerAssignedUnits.length === 1) {
+      setSelectedUnit(managerAssignedUnits[0]);
     }
-  }, [isManager, user?.unit]);
+  }, [isUnitScopedManager, managerAssignedUnits]);
 
   async function loadDashboardData() {
     if (!targetCompanyId && !isSuperAdmin) return;
@@ -243,11 +254,18 @@ export default function DashboardScreen() {
           {isManager && (
             <View style={styles.managerScopeNotice}>
               <Text style={styles.managerScopeNoticeText}>
-                {isUnitScopedManager ? (
+                {isMultiUnitManager ? (
+                  <>
+                    🔒 Multi-Unit View:{' '}
+                    <Text style={{ fontWeight: '700' }}>
+                      [Branch: {user?.branch}] [Units: {managerAssignedUnits.join(', ')}]
+                    </Text>
+                  </>
+                ) : isUnitScopedManager ? (
                   <>
                     🔒 Restricted Facility View:{' '}
                     <Text style={{ fontWeight: '700' }}>
-                      [Branch: {user?.branch}] [Unit: {user?.unit}]
+                      [Branch: {user?.branch}] [Unit: {managerAssignedUnits[0] || user?.unit}]
                     </Text>
                   </>
                 ) : isBranchScopedManager ? (
@@ -341,18 +359,20 @@ export default function DashboardScreen() {
           </View>
         )}
 
-        {/* Unit Filter Controls for Branch-Based Managers */}
-        {isBranchScopedManager && managerUnits.length > 0 && (
+        {/* Unit Filter Controls for Branch-Based or Multi-Unit Managers */}
+        {(isBranchScopedManager || isMultiUnitManager) && managerUnits.length > 0 && (
           <View style={styles.filterSectionCard}>
             <View style={styles.filterGroup}>
-              <Text style={styles.filterLabel}>Filter by Unit in {user?.branch}:</Text>
+              <Text style={styles.filterLabel}>
+                {isMultiUnitManager ? `Your Authorized Units in ${user?.branch}:` : `Filter by Unit in ${user?.branch}:`}
+              </Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterChipsRow}>
                 <TouchableOpacity
                   style={[styles.filterChip, selectedUnit === 'ALL' && styles.filterChipActive]}
                   onPress={() => setSelectedUnit('ALL')}
                 >
                   <Text style={[styles.filterChipText, selectedUnit === 'ALL' && styles.filterChipTextActive]}>
-                    All Units ({managerUnits.length})
+                    All ({managerUnits.length})
                   </Text>
                 </TouchableOpacity>
 

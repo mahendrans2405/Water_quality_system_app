@@ -9,6 +9,7 @@ const userSchema = new mongoose.Schema(
     company: { type: mongoose.Schema.Types.ObjectId, ref: 'Company' },
     branch: { type: String, default: '', trim: true },
     unit: { type: String, default: '', trim: true },
+    units: [{ type: String, trim: true }],      // Multi-unit assignment (branch-level managers)
     assignedDevices: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Device' }],
     isActive: { type: Boolean, default: true },
 

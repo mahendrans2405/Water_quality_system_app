@@ -54,6 +54,9 @@ async function requireAuth(req, res, next) {
       companyId: user.company ? String(user.company) : null,
       branch: user.branch || null,
       unit: user.unit || null,
+      units: Array.isArray(user.units) && user.units.length > 0
+        ? user.units
+        : (user.unit ? [user.unit] : []),   // multi-unit list; falls back to single unit
       assignedDevices: Array.isArray(user.assignedDevices) ? user.assignedDevices.map(String) : [],
       email: user.email,
       name: user.name,

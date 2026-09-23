@@ -81,11 +81,22 @@ devicesRouter.get(
           filter.branch = branch;
         }
 
-        if (req.user.unit) {
-          filter.unit = req.user.unit;
+        // Multi-unit support: if manager has a units array, filter with $in; else use single unit
+        const managerUnits = Array.isArray(req.user.units) ? req.user.units : [];
+        if (managerUnits.length > 1) {
+          // Multi-unit manager: can switch between their assigned units; respect unit query param as further filter
+          if (unit && managerUnits.includes(unit)) {
+            filter.unit = unit;
+          } else {
+            filter.unit = { $in: managerUnits };
+          }
+        } else if (managerUnits.length === 1) {
+          // Single-unit manager: locked to one unit
+          filter.unit = managerUnits[0];
         } else if (unit) {
           filter.unit = unit;
         }
+
         if (Array.isArray(req.user.assignedDevices) && req.user.assignedDevices.length > 0) {
           filter._id = { $in: req.user.assignedDevices };
         } else {

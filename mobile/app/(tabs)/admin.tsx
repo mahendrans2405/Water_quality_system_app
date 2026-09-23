@@ -75,9 +75,10 @@ export default function AdminScreen() {
     email: string;
     password: string;
     roleName: string;
-    scopeType: 'branch' | 'unit';
+    scopeType: 'branch' | 'units' | 'unit';
     branch: string;
-    unit: string;
+    units: string[];      // multi-unit selection
+    unit: string;         // single-unit (kept for backward compat)
   }>({
     name: '',
     email: '',
@@ -85,6 +86,7 @@ export default function AdminScreen() {
     roleName: 'Manager',
     scopeType: 'branch',
     branch: '',
+    units: [],
     unit: '',
   });
 
@@ -456,6 +458,15 @@ export default function AdminScreen() {
       return;
     }
 
+    if (managerForm.scopeType === 'units' && managerForm.units.length === 0) {
+      Alert.alert('Validation', 'Please select at least one unit for Multi-Unit access.');
+      return;
+    }
+    if (managerForm.scopeType === 'unit' && !managerForm.unit.trim()) {
+      Alert.alert('Validation', 'Please select a unit for Unit-Based access.');
+      return;
+    }
+
     try {
       const res = await api.post('/api/users', {
         name: managerForm.name.trim(),
@@ -464,14 +475,21 @@ export default function AdminScreen() {
         roleName: managerForm.roleName,
         companyId: selectedCompanyId,
         branch: managerForm.branch.trim() || undefined,
+        units: managerForm.scopeType === 'units'
+          ? managerForm.units
+          : managerForm.scopeType === 'unit'
+            ? [managerForm.unit.trim()]
+            : [],       // branch-based: empty means all units
         unit: managerForm.scopeType === 'unit' ? (managerForm.unit.trim() || undefined) : undefined,
       });
 
       if (res.data?.ok) {
         const createdScopeDesc =
-          managerForm.scopeType === 'unit'
-            ? `Unit-Based (Branch: ${managerForm.branch || 'All'}, Unit: ${managerForm.unit || 'All'})`
-            : `Branch-Based (Branch: ${managerForm.branch || 'All'} - All Units)`;
+          managerForm.scopeType === 'units'
+            ? `Multi-Unit (Branch: ${managerForm.branch || 'All'}, Units: ${managerForm.units.join(', ')})`
+            : managerForm.scopeType === 'unit'
+              ? `Unit-Based (Branch: ${managerForm.branch || 'All'}, Unit: ${managerForm.unit || 'All'})`
+              : `Branch-Based (Branch: ${managerForm.branch || 'All'} - All Units)`;
 
         setManagerForm({
           name: '',
@@ -480,6 +498,7 @@ export default function AdminScreen() {
           roleName: 'Manager',
           scopeType: 'branch',
           branch: companyBranches[0]?.name || '',
+          units: [],
           unit: companyBranches[0]?.units?.[0]?.name || '',
         });
         await loadUsers(selectedCompanyId);
@@ -1253,41 +1272,52 @@ export default function AdminScreen() {
               <View style={styles.managerForm}>
                 <Text style={styles.formTitle}>Create & Provision Manager Account</Text>
                 <Text style={styles.formSubtitle}>
-                  Configure manager scope: Branch-Based (access to all units in the branch) or Unit-Based (strictly restricted to a single unit).
+                  Set how much access this manager gets: All units in a branch, specific multiple units, or a single unit only.
                 </Text>
 
                 {/* Scope Type Selection */}
                 <View style={styles.formSectionBox}>
-                  <Text style={styles.inputLabel}>Manager Scope Type *</Text>
+                  <Text style={styles.inputLabel}>Manager Access Scope *</Text>
                   <View style={styles.companySelectChipRow}>
                     <TouchableOpacity
                       style={[styles.companyFormChip, managerForm.scopeType === 'branch' && styles.companyFormChipActive]}
-                      onPress={() => setManagerForm((p) => ({ ...p, scopeType: 'branch' }))}
+                      onPress={() => setManagerForm((p) => ({ ...p, scopeType: 'branch', units: [] }))}
                     >
                       <Text style={[styles.companyFormChipText, managerForm.scopeType === 'branch' && styles.companyFormChipTextActive]}>
-                        🏢 Branch-Based (All Units)
+                        All Units
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.companyFormChip, managerForm.scopeType === 'units' && styles.companyFormChipActive]}
+                      onPress={() => setManagerForm((p) => ({ ...p, scopeType: 'units', units: [] }))}
+                    >
+                      <Text style={[styles.companyFormChipText, managerForm.scopeType === 'units' && styles.companyFormChipTextActive]}>
+                        Multiple Units
                       </Text>
                     </TouchableOpacity>
 
                     <TouchableOpacity
                       style={[styles.companyFormChip, managerForm.scopeType === 'unit' && styles.companyFormChipActive]}
-                      onPress={() => setManagerForm((p) => ({ ...p, scopeType: 'unit' }))}
+                      onPress={() => setManagerForm((p) => ({ ...p, scopeType: 'unit', units: [] }))}
                     >
                       <Text style={[styles.companyFormChipText, managerForm.scopeType === 'unit' && styles.companyFormChipTextActive]}>
-                        🧪 Unit-Based (Single Unit)
+                        Single Unit Only
                       </Text>
                     </TouchableOpacity>
                   </View>
                   <Text style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>
                     {managerForm.scopeType === 'branch'
-                      ? '✓ This manager can view and switch between all units and devices in their assigned branch.'
-                      : '✓ This manager is strictly locked to viewing only their assigned unit within the branch.'}
+                      ? '✓ This manager can view and switch between ALL units and devices in their assigned branch.'
+                      : managerForm.scopeType === 'units'
+                        ? '✓ This manager can view devices only in the specific units you select below (multi-select).'
+                        : '✓ This manager is strictly locked to viewing only the single unit you select below.'}
                   </Text>
                 </View>
 
                 {/* Branch Selection */}
                 <View style={styles.formSectionBox}>
-                  <Text style={styles.inputLabel}>Assign Branch for Manager *</Text>
+                  <Text style={styles.inputLabel}>Assign Branch *</Text>
                   <View style={styles.companySelectChipRow}>
                     {companyBranches.map((b) => {
                       const isSel = managerForm.branch === b.name;
@@ -1297,7 +1327,7 @@ export default function AdminScreen() {
                           style={[styles.companyFormChip, isSel && styles.companyFormChipActive]}
                           onPress={() => {
                             const firstUnit = b.units?.[0]?.name || 'Unit 1';
-                            setManagerForm((p) => ({ ...p, branch: b.name, unit: firstUnit }));
+                            setManagerForm((p) => ({ ...p, branch: b.name, units: [], unit: firstUnit }));
                           }}
                         >
                           <Text style={[styles.companyFormChipText, isSel && styles.companyFormChipTextActive]}>
@@ -1309,16 +1339,76 @@ export default function AdminScreen() {
                   </View>
                 </View>
 
-                {/* Unit Selection (Only if Unit-Based) */}
-                {managerForm.scopeType === 'unit' ? (
+                {/* Unit Selection based on scope type */}
+                {managerForm.scopeType === 'branch' ? (
+                  <View style={[styles.formSectionBox, { backgroundColor: '#f0fdf4', borderColor: '#bbf7d0' }]}>
+                    <Text style={{ fontSize: 12, color: '#166534', fontWeight: '600' }}>
+                      Branch-Wide Access: This manager can monitor ALL units in "{managerForm.branch || 'selected branch'}".
+                    </Text>
+                  </View>
+                ) : managerForm.scopeType === 'units' ? (
                   (() => {
                     const currBranch = companyBranches.find((b) => b.name === managerForm.branch);
-                    const units = currBranch?.units || [];
+                    const unitOptions = currBranch?.units || [];
                     return (
                       <View style={styles.formSectionBox}>
-                        <Text style={styles.inputLabel}>Assign Unit for Manager *</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                          <Text style={styles.inputLabel}>Select Units (Multi-Select) *</Text>
+                          {managerForm.units.length > 0 && (
+                            <View style={{ backgroundColor: '#2563eb', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10 }}>
+                              <Text style={{ fontSize: 11, color: '#fff', fontWeight: '700' }}>
+                                {managerForm.units.length} selected
+                              </Text>
+                            </View>
+                          )}
+                        </View>
+                        <Text style={{ fontSize: 11, color: '#64748b', marginBottom: 8 }}>
+                          Tap to toggle units on/off. Selected units are highlighted.
+                        </Text>
                         <View style={styles.companySelectChipRow}>
-                          {units.map((u) => {
+                          {unitOptions.map((u) => {
+                            const isSelected = managerForm.units.includes(u.name);
+                            return (
+                              <TouchableOpacity
+                                key={u.name}
+                                style={[
+                                  styles.companyFormChip,
+                                  isSelected && styles.companyFormChipActive,
+                                  isSelected && { borderColor: '#2563eb' },
+                                ]}
+                                onPress={() => {
+                                  setManagerForm((p) => ({
+                                    ...p,
+                                    units: isSelected
+                                      ? p.units.filter((x) => x !== u.name)
+                                      : [...p.units, u.name],
+                                  }));
+                                }}
+                              >
+                                <Text style={[styles.companyFormChipText, isSelected && styles.companyFormChipTextActive]}>
+                                  {isSelected ? '✓ ' : ''}{u.name}
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+                        {managerForm.units.length > 0 && (
+                          <Text style={{ fontSize: 11, color: '#2563eb', marginTop: 6, fontWeight: '600' }}>
+                            Access granted to: {managerForm.units.join(' · ')}
+                          </Text>
+                        )}
+                      </View>
+                    );
+                  })()
+                ) : (
+                  (() => {
+                    const currBranch = companyBranches.find((b) => b.name === managerForm.branch);
+                    const unitOptions = currBranch?.units || [];
+                    return (
+                      <View style={styles.formSectionBox}>
+                        <Text style={styles.inputLabel}>Select Single Unit *</Text>
+                        <View style={styles.companySelectChipRow}>
+                          {unitOptions.map((u) => {
                             const isSel = managerForm.unit === u.name;
                             return (
                               <TouchableOpacity
@@ -1336,12 +1426,6 @@ export default function AdminScreen() {
                       </View>
                     );
                   })()
-                ) : (
-                  <View style={[styles.formSectionBox, { backgroundColor: '#f0fdf4', borderColor: '#bbf7d0' }]}>
-                    <Text style={{ fontSize: 12, color: '#166534', fontWeight: '600' }}>
-                      🌐 Branch-Wide Access: Manager will be able to monitor all units in "{managerForm.branch || 'selected branch'}".
-                    </Text>
-                  </View>
                 )}
 
                 <TextInput
@@ -1394,11 +1478,16 @@ export default function AdminScreen() {
                     <Text style={styles.userEmail}>{u.email}</Text>
                     <Text style={styles.userMeta}>
                       {u.branch ? (
-                        u.unit ? (
-                          `Unit-Based: ${u.branch} · Unit: ${u.unit}`
-                        ) : (
-                          `Branch-Based: ${u.branch} (All Units)`
-                        )
+                        (() => {
+                          const userUnits: string[] = Array.isArray((u as any).units) ? (u as any).units : (u.unit ? [u.unit] : []);
+                          if (userUnits.length > 1) {
+                            return `Multi-Unit: ${u.branch} · Units: ${userUnits.join(', ')}`;
+                          } else if (userUnits.length === 1) {
+                            return `Single Unit: ${u.branch} · Unit: ${userUnits[0]}`;
+                          } else {
+                            return `Branch-Wide: ${u.branch} (All Units)`;
+                          }
+                        })()
                       ) : (
                         'Company-Wide (All Branches & Units)'
                       )}

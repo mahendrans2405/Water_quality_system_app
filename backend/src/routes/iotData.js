@@ -36,9 +36,20 @@ async function getAuthorizedDevice(deviceIdOrMongoId, user) {
     if (user.branch && device.branch && user.branch.toLowerCase() !== device.branch.toLowerCase()) {
       throw httpError(403, 'FORBIDDEN', 'Access denied: Device belongs to another branch');
     }
-    if (user.unit && device.unit && user.unit.toLowerCase() !== device.unit.toLowerCase()) {
+
+    // Multi-unit support: if manager has a units array, check if device.unit is in the list
+    const managerUnits = Array.isArray(user.units) ? user.units : [];
+    if (managerUnits.length > 0 && device.unit) {
+      const deviceUnitLower = device.unit.toLowerCase();
+      const hasAccess = managerUnits.some((u) => u.toLowerCase() === deviceUnitLower);
+      if (!hasAccess) {
+        throw httpError(403, 'FORBIDDEN', 'Access denied: Device belongs to a unit you are not authorized to access');
+      }
+    } else if (user.unit && device.unit && user.unit.toLowerCase() !== device.unit.toLowerCase()) {
+      // Fallback to single-unit check for backward compat
       throw httpError(403, 'FORBIDDEN', 'Access denied: Device belongs to another unit');
     }
+
     if (Array.isArray(user.assignedDevices) && user.assignedDevices.length > 0) {
       if (!user.assignedDevices.includes(String(device._id))) {
         throw httpError(403, 'FORBIDDEN', 'Access denied: This device is not assigned to your account');
@@ -302,8 +313,16 @@ iotRouter.get(
           filter.branch = branch;
         }
 
-        if (req.user.unit) {
-          filter.unit = req.user.unit;
+        // Multi-unit support: if manager has a units array, apply $in filter
+        const managerUnits = Array.isArray(req.user.units) ? req.user.units : [];
+        if (managerUnits.length > 1) {
+          if (unit && unit !== 'ALL' && managerUnits.includes(unit)) {
+            filter.unit = unit;
+          } else {
+            filter.unit = { $in: managerUnits };
+          }
+        } else if (managerUnits.length === 1) {
+          filter.unit = managerUnits[0];
         } else if (unit && unit !== 'ALL') {
           filter.unit = unit;
         }
