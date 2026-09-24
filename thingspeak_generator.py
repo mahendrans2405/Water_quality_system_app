@@ -2,17 +2,10 @@
 ThingSpeak Water Quality IoT Data Generator & Desktop Application
 ==================================================================
 Simulates water quality telemetry for 4 channels with tiered alert profiles:
-  - Channel 1: Branch 1 - Unit 1  --> NORMAL (Safe / Acceptable Target)
-  - Channel 2: Branch 1 - Unit 2  --> NORMAL (Safe / Acceptable Target)
-  - Channel 3: Branch 2 - Unit 1  --> WARNING (Tier 2 Alert)
-  - Channel 4: Branch 2 - Unit 2  --> DANGER  (Critical Tier 3 Alert)
-
-Features:
-  - Bulk Update API (fast: uploads 1000 records in 2 batches of 500 in seconds)
-  - Live Continuous Simulation Mode (sends live packets every 15s to keep dashboard 'Online')
-  - Tkinter Desktop GUI with visual status cards, progress bar, and real-time logs
-  - Headless CLI mode for scripts and automation
-  - Persistent channel configuration saved to 'thingspeak_config.json'
+  - Channel 1: Main_Branch - Unit 1  --> NORMAL (Safe / Acceptable Target)
+  - Channel 2: Main_Branch - Unit 2  --> NORMAL (Safe / Acceptable Target)
+  - Channel 3: Branch_1 - Unit 1     --> WARNING (Tier 2 Alert)
+  - Channel 4: Branch_1 - Unit 2     --> DANGER  (Critical Tier 3 Alert)
 """
 
 import sys
@@ -23,64 +16,75 @@ import random
 import datetime
 import threading
 import argparse
+import ssl
 import urllib.request
 import urllib.error
 import urllib.parse
 
-# Default Configuration File
+# Bypass Windows SSL certificate chain issues
+try:
+    ssl._create_default_https_context = ssl._create_unverified_context
+except Exception:
+    pass
+
+# Force UTF-8 stdout if possible on Windows
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "thingspeak_config.json")
 
-# Default Channel Profiles according to WHO / Platform Alert Matrix
 DEFAULT_CHANNELS = [
     {
         "id": "1",
-        "name": "Sensor Unit 1 (Normal)",
-        "branch": "Branch_1",
-        "unit": "B1_Unit_1",
+        "name": "Main_Branch - Unit 1 (Normal)",
+        "branch": "Main Branch",
+        "unit": "Unit 1",
         "status_tier": "NORMAL",
-        "channel_id": "",
-        "write_key": "",
-        "color": "#16a34a",  # Emerald Green
+        "channel_id": "3508060",
+        "write_key": "4PA77GLPHVB6BV3G",
+        "color": "#16a34a",
         "description": "Safe / Acceptable Target (pH: 7.1-7.7, Turbidity: 0.3-0.8 NTU, TDS: 250-450 ppm)",
     },
     {
         "id": "2",
-        "name": "Sensor Unit 2 (Normal)",
-        "branch": "Branch_1",
-        "unit": "B1_Unit_2",
+        "name": "Main_Branch - Unit 2 (Normal)",
+        "branch": "Main Branch",
+        "unit": "Unit 2",
         "status_tier": "NORMAL",
-        "channel_id": "",
-        "write_key": "",
-        "color": "#16a34a",  # Emerald Green
+        "channel_id": "3508062",
+        "write_key": "H0ZI2Z8WEMUMIP9C",
+        "color": "#16a34a",
         "description": "Safe / Acceptable Target (pH: 6.9-7.5, Turbidity: 0.4-0.9 NTU, TDS: 280-480 ppm)",
     },
     {
         "id": "3",
-        "name": "Sensor Unit 3 (Warning)",
-        "branch": "Branch_2",
-        "unit": "B2_Unit_1",
+        "name": "Branch_1 - Unit 1 (Warning)",
+        "branch": "Branch 1",
+        "unit": "Unit 1",
         "status_tier": "WARNING",
-        "channel_id": "",
-        "write_key": "",
-        "color": "#d97706",  # Amber / Orange
+        "channel_id": "3508063",
+        "write_key": "JSI00ZDYJ0S3ZBO9",
+        "color": "#d97706",
         "description": "Warning Tier (pH: 5.7-5.9 or 9.1-9.3, Turbidity: 5.5-8.5 NTU, TDS: 1100-1350 ppm)",
     },
     {
         "id": "4",
-        "name": "Sensor Unit 4 (Danger)",
-        "branch": "Branch_2",
-        "unit": "B2_Unit_2",
+        "name": "Branch_1 - Unit 2 (Danger)",
+        "branch": "Branch 1",
+        "unit": "Unit 2",
         "status_tier": "DANGER",
-        "channel_id": "",
-        "write_key": "",
-        "color": "#dc2626",  # Crimson Red
+        "channel_id": "3508067",
+        "write_key": "MFN8UMQ0MB4F27GF",
+        "color": "#dc2626",
         "description": "Critical Danger Tier (pH: 4.8-5.3 or 9.8-10.4, Turbidity: 12-18 NTU, TDS: 1600-2200 ppm)",
     },
 ]
 
 
 def load_config():
-    """Load configuration from JSON file or return defaults."""
     if os.path.exists(CONFIG_FILE):
         try:
             with open(CONFIG_FILE, "r", encoding="utf-8") as f:
@@ -93,7 +97,6 @@ def load_config():
 
 
 def save_config(channels):
-    """Save configuration to JSON file."""
     try:
         with open(CONFIG_FILE, "w", encoding="utf-8") as f:
             json.dump(channels, f, indent=2)
@@ -101,29 +104,16 @@ def save_config(channels):
         print(f"Warning: Failed to save config: {e}")
 
 
-# ==============================================================================
-# DATA GENERATOR ENGINE
-# ==============================================================================
-
 def generate_reading(status_tier):
-    """
-    Generate realistic water quality readings matching WHO / System Thresholds:
-      Field 1: pH
-      Field 2: Turbidity (NTU)
-      Field 3: TDS (ppm)
-      Field 4: Temperature (°C) / Hardware Status
-    """
     tier = status_tier.upper()
 
     if tier == "NORMAL":
-        # WHO Target: pH 6.5–8.5 | Turbidity < 1.0 NTU | TDS < 600 ppm
         ph = round(random.uniform(7.15, 7.75), 2)
         turbidity = round(random.uniform(0.25, 0.85), 2)
         tds = round(random.uniform(280.0, 480.0), 1)
         temp = round(random.uniform(23.5, 26.5), 1)
 
     elif tier == "WARNING":
-        # WHO Warning Tier: pH < 6.0 or > 9.0 | Turbidity 5–10 NTU | TDS 1000–1500 ppm
         mode = random.choice(["high_tds", "high_turbidity", "acidic_ph", "alkaline_ph"])
         if mode == "high_tds":
             ph = round(random.uniform(7.2, 8.2), 2)
@@ -144,7 +134,6 @@ def generate_reading(status_tier):
         temp = round(random.uniform(24.0, 28.5), 1)
 
     elif tier == "DANGER":
-        # WHO Danger Tier: pH < 5.5 or > 9.5 | Turbidity > 10 NTU | TDS > 1500 ppm
         mode = random.choice(["critical_tds", "critical_turbidity", "severe_acid", "severe_alkali"])
         if mode == "critical_tds":
             ph = round(random.uniform(6.2, 8.8), 2)
@@ -176,10 +165,6 @@ def generate_reading(status_tier):
 
 
 def generate_bulk_dataset(status_tier, count=1000, time_span_hours=72):
-    """
-    Generates `count` historical data points evenly spaced over the last `time_span_hours`.
-    Returns a list of dicts suitable for ThingSpeak Bulk Update.
-    """
     now = datetime.datetime.now(datetime.timezone.utc)
     interval_seconds = max(15, int((time_span_hours * 3600) / count))
     start_time = now - datetime.timedelta(seconds=interval_seconds * count)
@@ -199,12 +184,7 @@ def generate_bulk_dataset(status_tier, count=1000, time_span_hours=72):
     return dataset
 
 
-# ==============================================================================
-# THINGSPEAK API CLIENT
-# ==============================================================================
-
 def upload_single_feed(write_key, fields):
-    """Post a single reading to ThingSpeak."""
     url = "https://api.thingspeak.com/update.json"
     payload = {"api_key": write_key, **fields}
     data = json.dumps(payload).encode("utf-8")
@@ -218,10 +198,6 @@ def upload_single_feed(write_key, fields):
 
 
 def upload_bulk_batch(channel_id, write_key, updates):
-    """
-    Post a batch of updates (max 960 per call) to ThingSpeak Bulk Update API.
-    Endpoint: POST https://api.thingspeak.com/channels/{channel_id}/bulk_update.json
-    """
     url = f"https://api.thingspeak.com/channels/{channel_id}/bulk_update.json"
     payload = {
         "write_api_key": write_key,
@@ -238,56 +214,60 @@ def upload_bulk_batch(channel_id, write_key, updates):
 
 
 def push_1000_records_to_channel(channel_info, count=1000, log_fn=print, progress_fn=None):
-    """
-    Upload `count` records to a single channel in 500-record chunks using Bulk Update.
-    """
     ch_id = str(channel_info.get("channel_id", "")).strip()
     key = str(channel_info.get("write_key", "")).strip()
     name = channel_info.get("name", "Channel")
     tier = channel_info.get("status_tier", "NORMAL")
 
     if not ch_id or not key:
-        log_fn(f"❌ [SKIP] {name}: Channel ID or Write API Key missing! Enter credentials above.")
+        log_fn(f"[SKIP] {name}: Channel ID or Write API Key missing! Enter credentials above.")
         return False
 
     log_fn("-------------------------------------------------------")
-    log_fn(f"🚀 Generating {count} records for {name} [{tier}]...")
-    log_fn(f"   Channel #{ch_id} | {channel_info.get('branch')} / {channel_info.get('unit')}")
+    log_fn(f"[START] Generating {count} records for {name} [{tier}]...")
+    log_fn(f"        Channel #{ch_id} | {channel_info.get('branch')} / {channel_info.get('unit')}")
 
     all_data = generate_bulk_dataset(tier, count=count, time_span_hours=72)
-    chunk_size = 500
+    chunk_size = 960  # ThingSpeak max per request
     chunks = [all_data[i:i + chunk_size] for i in range(0, len(all_data), chunk_size)]
 
     total_uploaded = 0
     for idx, chunk in enumerate(chunks, start=1):
-        log_fn(f"   📦 Uploading Batch {idx}/{len(chunks)} ({len(chunk)} records) to #{ch_id}...")
-        try:
-            status, res_body = upload_bulk_batch(ch_id, key, chunk)
-            total_uploaded += len(chunk)
-            log_fn(f"   ✅ Batch {idx} accepted (HTTP {status})! Uploaded: {total_uploaded}/{count}")
-            if progress_fn:
-                progress_fn(total_uploaded, count)
-        except urllib.error.HTTPError as e:
-            err_msg = e.read().decode("utf-8", errors="ignore")
-            log_fn(f"   ❌ Batch {idx} Failed (HTTP {e.code}): {err_msg}")
-            if e.code == 429:
-                log_fn("   ⚠️ Rate limited. Waiting 15s before next attempt...")
-                time.sleep(15)
-            return False
-        except Exception as e:
-            log_fn(f"   ❌ Error sending batch: {e}")
+        log_fn(f"        Uploading Batch {idx}/{len(chunks)} ({len(chunk)} records) to #{ch_id}...")
+        attempts = 0
+        success = False
+        while attempts < 3 and not success:
+            attempts += 1
+            try:
+                status, res_body = upload_bulk_batch(ch_id, key, chunk)
+                total_uploaded += len(chunk)
+                log_fn(f"        [OK] Batch {idx} accepted (HTTP {status})! Uploaded: {total_uploaded}/{count}")
+                success = True
+                if progress_fn:
+                    progress_fn(total_uploaded, count)
+            except urllib.error.HTTPError as e:
+                err_msg = e.read().decode("utf-8", errors="ignore")
+                log_fn(f"        [FAIL] Batch {idx} (HTTP {e.code}): {err_msg.strip()}")
+                if e.code == 429:
+                    log_fn("        [WAIT] ThingSpeak rate limit cooldown (16s)...")
+                    time.sleep(16)
+                else:
+                    break
+            except Exception as e:
+                log_fn(f"        [ERROR] Network error: {e}")
+                time.sleep(5)
+
+        if not success:
+            log_fn(f"        [ABORT] Could not upload batch {idx} for {name}")
             return False
 
         if idx < len(chunks):
-            time.sleep(3)
+            log_fn("        [PAUSE] Waiting 16s between channel batches...")
+            time.sleep(16)
 
-    log_fn(f"🎉 Successfully populated {total_uploaded} records for {name} (#{ch_id})!")
+    log_fn(f"[SUCCESS] Uploaded all {total_uploaded} records for {name} (#{ch_id})!")
     return True
 
-
-# ==============================================================================
-# DESKTOP GRAPHICAL USER INTERFACE (TKINTER)
-# ==============================================================================
 
 class DesktopApp:
     def __init__(self, root):
@@ -317,7 +297,7 @@ class DesktopApp:
 
         tk.Label(
             header_frame,
-            text="💧 ThingSpeak IoT Demo Data Generator",
+            text="ThingSpeak IoT Demo Data Generator",
             font=("Segoe UI", 18, "bold"),
             fg=self.text_main,
             bg=self.bg_color,
@@ -398,7 +378,7 @@ class DesktopApp:
 
         self.btn_upload_all = tk.Button(
             ctrl_frame,
-            text="⚡ Upload 1,000 Records to ALL 4 Channels",
+            text="Upload 1,000 Records to ALL 4 Channels",
             font=("Segoe UI", 10, "bold"),
             bg="#2563eb",
             fg="#ffffff",
@@ -412,7 +392,7 @@ class DesktopApp:
 
         self.btn_live_sim = tk.Button(
             ctrl_frame,
-            text="🟢 Start Live Simulation (Every 15s)",
+            text="Start Live Simulation (Every 15s)",
             font=("Segoe UI", 9, "bold"),
             bg="#059669",
             fg="#ffffff",
@@ -426,7 +406,7 @@ class DesktopApp:
 
         tk.Button(
             ctrl_frame,
-            text="💾 Save Keys",
+            text="Save Keys",
             font=("Segoe UI", 9),
             bg="#334155",
             fg="#ffffff",
@@ -435,7 +415,7 @@ class DesktopApp:
             relief="flat",
             cursor="hand2",
             command=self.save_current_entries,
-        ) .pack(side="right")
+        ).pack(side="right")
 
         self.progress_bar = ttk.Progressbar(self.root, mode="determinate")
         self.progress_bar.pack(fill="x", padx=20, pady=(0, 8))
@@ -466,8 +446,8 @@ class DesktopApp:
         )
         self.log_text.pack(fill="both", expand=True, padx=20, pady=(4, 15))
 
-        self.log("Ready. Enter your 4 ThingSpeak Channel IDs and Write API Keys above.")
-        self.log("Click 'Upload 1,000 Records to ALL 4 Channels' to generate full telemetry in seconds!")
+        self.log("Ready. 4 ThingSpeak Channels loaded.")
+        self.log("Click 'Upload 1,000 Records to ALL 4 Channels' to populate complete telemetry.")
 
     def log(self, message):
         def _append():
@@ -480,7 +460,7 @@ class DesktopApp:
             ch["channel_id"] = self.channel_entries[i]["id"].get().strip()
             ch["write_key"] = self.channel_entries[i]["key"].get().strip()
         save_config(self.channels)
-        self.log("💾 Credentials saved to thingspeak_config.json!")
+        self.log("[SAVED] Credentials saved to thingspeak_config.json!")
 
     def set_controls_state(self, enabled=True):
         state = "normal" if enabled else "disabled"
@@ -505,10 +485,12 @@ class DesktopApp:
                     overall = int(((idx - 1) / total_channels * 100) + (curr / tot * (100 / total_channels)))
                     self.root.after(0, lambda v=overall: self.progress_bar.configure(value=v))
                 push_1000_records_to_channel(ch, count=count, log_fn=self.log, progress_fn=_prog)
+                if idx < total_channels:
+                    time.sleep(3)
 
             self.root.after(0, lambda: self.progress_bar.configure(value=100))
             self.log("\n=======================================================")
-            self.log("🎉 ALL 4 CHANNELS PROVISIONED SUCCESSFULLY!")
+            self.log("[COMPLETE] ALL 4 CHANNELS PROVISIONED SUCCESSFULLY!")
             self.log("Open your AquaFlow Dashboard to verify Normal, Warning, and Danger statuses.")
             self.root.after(0, lambda: self.set_controls_state(True))
 
@@ -538,12 +520,12 @@ class DesktopApp:
         if not self.is_running:
             self.save_current_entries()
             if not any(c.get("write_key") for c in self.channels):
-                self.log("❌ Enter at least one Write API Key before starting live simulation.")
+                self.log("[ERROR] Enter at least one Write API Key before starting live simulation.")
                 return
             self.is_running = True
             self.stop_sim_event.clear()
-            self.btn_live_sim.config(text="🔴 Stop Live Simulation", bg="#dc2626")
-            self.log("\n🟢 Live continuous simulation started (posting updates every 15s)...")
+            self.btn_live_sim.config(text="Stop Live Simulation", bg="#dc2626")
+            self.log("\n[LIVE] Live continuous simulation started (posting updates every 15s)...")
 
             def _sim_loop():
                 while not self.stop_sim_event.is_set():
@@ -554,26 +536,28 @@ class DesktopApp:
                         reading = generate_reading(ch["status_tier"])
                         try:
                             upload_single_feed(key, reading)
-                            self.log(f"📡 Live sent to {ch['name']}: pH={reading['field1']}, Turb={reading['field2']} NTU, TDS={reading['field3']} ppm")
+                            self.log(f"[FEED] Live sent to {ch['name']}: pH={reading['field1']}, Turb={reading['field2']} NTU, TDS={reading['field3']} ppm")
                         except Exception as e:
-                            self.log(f"⚠️ Live post error for {ch['name']}: {e}")
+                            self.log(f"[WARN] Live post error for {ch['name']}: {e}")
                     self.stop_sim_event.wait(16)
 
             threading.Thread(target=_sim_loop, daemon=True).start()
         else:
             self.is_running = False
             self.stop_sim_event.set()
-            self.btn_live_sim.config(text="🟢 Start Live Simulation (Every 15s)", bg="#059669")
-            self.log("🛑 Live continuous simulation stopped.")
+            self.btn_live_sim.config(text="Start Live Simulation (Every 15s)", bg="#059669")
+            self.log("[STOP] Live continuous simulation stopped.")
 
 
 def run_cli(args):
     channels = load_config()
     count = args.records
     print(f"ThingSpeak Telemetry Generator (CLI Mode): {count} records/channel")
-    for ch in channels:
+    for idx, ch in enumerate(channels, start=1):
         if ch.get("channel_id") and ch.get("write_key"):
             push_1000_records_to_channel(ch, count=count)
+            if idx < len(channels):
+                time.sleep(3)
 
 
 def main():
