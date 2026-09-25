@@ -775,8 +775,8 @@ export default function ChartsScreen() {
           </View>
         )}
 
-        {/* Parameter Reference & Target Ranges Card */}
-        <ParameterReferenceCard />
+        {/* Parameter Reference & Target Ranges Card (Super Admin Only) */}
+        {isSuperAdmin && <ParameterReferenceCard />}
       </ScrollView>
     </SafeAreaView>
   );
