@@ -21,10 +21,21 @@ import { CompanySelector } from '../../components/company-selector';
 import { StatusBadge } from '../../components/ui/status-badge';
 
 /**
- * Evaluates water potability & drinkability messages based on status and WHO tier
+ * Evaluates water potability & drinkability messages based on the WHO condition table:
+ * - pH: Normal 6.5–8.5 | Alert <6.5 or >8.5 | Warning <6.0 or >9.0 | Danger <5.5 or >9.5
+ * - Turbidity: Normal <1 NTU | Alert 1–5 | Warning 5–10 | Danger >10
+ * - TDS: Normal <600 ppm | Alert 600–1000 | Warning 1000–1500 | Danger >1500
+ *
+ * Validates the latest recorded sensor readings (total validation of water) even when
+ * the station is currently offline. Offline status is already indicated in the card badge.
  */
-function getDrinkabilityInfo(status: string, severity?: string, hasData?: boolean) {
-  if (!hasData || status === 'No Recent Data') {
+function getDrinkabilityInfo(
+  parameters: Record<string, any> = {},
+  telemetrySeverity?: string,
+  hasData?: boolean,
+  isStationOffline?: boolean
+) {
+  if (!hasData || Object.keys(parameters).length === 0) {
     return {
       statusText: 'No Data',
       drinkableMessage: '⚪ Sensor Data Pending',
@@ -38,35 +49,36 @@ function getDrinkabilityInfo(status: string, severity?: string, hasData?: boolea
     };
   }
 
-  if (status === 'Offline') {
-    return {
-      statusText: 'Offline',
-      drinkableMessage: '⚪ Station Offline',
-      badgeColor: '#fef2f2',
-      borderColor: '#fecaca',
-      textColor: '#dc2626',
-      bannerBg: '#fff1f2',
-      bannerBorder: '#fecdd3',
-      bannerIcon: '⚠️',
-      detailMsg: 'Station is offline (threshold reached). Showing last recorded water quality readings.',
-    };
+  // Determine highest severity from parameters or telemetrySeverity
+  let highest = telemetrySeverity || 'NORMAL';
+  const rank: Record<string, number> = { NORMAL: 0, ALERT: 1, WARNING: 2, DANGER: 3 };
+
+  for (const param of Object.values(parameters)) {
+    const s = param?.severity || 'NORMAL';
+    if ((rank[s] || 0) > (rank[highest] || 0)) {
+      highest = s;
+    }
   }
 
-  if (severity === 'DANGER' || status === 'Danger') {
+  const offlineSuffix = isStationOffline
+    ? ' (Station is offline; assessment validated from latest recorded readings).'
+    : '';
+
+  if (highest === 'DANGER') {
     return {
       statusText: 'Danger',
       drinkableMessage: '🚫 Not Drinkable (Unsafe)',
-      badgeColor: '#fef2f2',
+      badgeColor: '#fee2e2',
       borderColor: '#f87171',
       textColor: '#b91c1c',
       bannerBg: '#fee2e2',
       bannerBorder: '#f87171',
       bannerIcon: '⛔',
-      detailMsg: 'DANGER: Critical water contamination thresholds breached! Water is NOT safe for direct drinking. Immediate treatment required.',
+      detailMsg: `DANGER: Critical water contamination thresholds breached! Water is NOT safe for direct drinking. Immediate treatment required.${offlineSuffix}`,
     };
   }
 
-  if (severity === 'WARNING' || severity === 'ALERT' || status === 'Warning') {
+  if (highest === 'WARNING' || highest === 'ALERT') {
     return {
       statusText: 'Warning',
       drinkableMessage: '⚠️ Not Drinkable (Filter Required)',
@@ -76,7 +88,7 @@ function getDrinkabilityInfo(status: string, severity?: string, hasData?: boolea
       bannerBg: '#fef3c7',
       bannerBorder: '#fde68a',
       bannerIcon: '⚠️',
-      detailMsg: 'CAUTION: Water parameters deviate from WHO acceptable limits. Filtration, boiling, or treatment required before drinking.',
+      detailMsg: `CAUTION: Water parameters deviate from WHO acceptable limits. Filtration, boiling, or treatment required before drinking.${offlineSuffix}`,
     };
   }
 
@@ -89,7 +101,7 @@ function getDrinkabilityInfo(status: string, severity?: string, hasData?: boolea
     bannerBg: '#ecfdf5',
     bannerBorder: '#a7f3d0',
     bannerIcon: '💧',
-    detailMsg: 'SAFE: All water quality parameters (pH, TDS, Turbidity) meet WHO drinking standards. Water is potable and safe to drink.',
+    detailMsg: `SAFE: All water quality parameters (pH, TDS, Turbidity) meet WHO drinking standards. Water is potable and safe to drink.${offlineSuffix}`,
   };
 }
 
@@ -583,16 +595,8 @@ export default function DashboardScreen() {
                 const telemetry = live?.telemetry;
                 const parameters = telemetry?.parameters || {};
                 const hasData = Boolean(telemetry && Object.keys(parameters).length > 0);
-                const severity =
-                  telemetry?.severity ||
-                  ((status as string) === 'Danger'
-                    ? 'DANGER'
-                    : (status as string) === 'Warning'
-                    ? 'WARNING'
-                    : (status as string) === 'Safe'
-                    ? 'NORMAL'
-                    : undefined);
-                const drinkInfo = getDrinkabilityInfo(status, severity, hasData);
+                const isStationOffline = status === 'Offline';
+                const drinkInfo = getDrinkabilityInfo(parameters, telemetry?.severity, hasData, isStationOffline);
                 const isSelected = effectiveSelectedDevice?.id === device.id;
 
                 return (
@@ -600,6 +604,7 @@ export default function DashboardScreen() {
                     key={device.id}
                     style={[
                       styles.horizontalDeviceCard,
+                      isMobile && styles.horizontalDeviceCardMobile,
                       isSelected && styles.horizontalDeviceCardSelected,
                     ]}
                     onPress={() => {
@@ -674,22 +679,14 @@ export default function DashboardScreen() {
                 const telemetry = live?.telemetry;
                 const parameters = telemetry?.parameters || {};
                 const hasData = Boolean(telemetry && Object.keys(parameters).length > 0);
-                const severity =
-                  telemetry?.severity ||
-                  ((status as string) === 'Danger'
-                    ? 'DANGER'
-                    : (status as string) === 'Warning'
-                    ? 'WARNING'
-                    : (status as string) === 'Safe'
-                    ? 'NORMAL'
-                    : undefined);
-                const drinkInfo = getDrinkabilityInfo(status, severity, hasData);
+                const isStationOffline = status === 'Offline';
+                const drinkInfo = getDrinkabilityInfo(parameters, telemetry?.severity, hasData, isStationOffline);
 
                 return (
-                  <View style={styles.selectedDeviceDetailCard}>
+                  <View style={[styles.selectedDeviceDetailCard, isMobile && styles.detailCardMobile]}>
                     {/* Selected Device Header */}
-                    <View style={styles.detailCardHeader}>
-                      <View style={{ flex: 1, marginRight: 8 }}>
+                    <View style={[styles.detailCardHeader, isMobile && styles.detailCardHeaderMobile]}>
+                      <View style={{ flex: 1, marginRight: isMobile ? 0 : 8 }}>
                         <View style={styles.detailTitleRow}>
                           <Text style={styles.detailCardStationName}>
                             {dev.name || dev.deviceId}
@@ -714,7 +711,7 @@ export default function DashboardScreen() {
                         </Text>
                       </View>
 
-                      <View style={styles.detailCardActionButtons}>
+                      <View style={[styles.detailCardActionButtons, isMobile && styles.detailCardActionButtonsMobile]}>
                         <TouchableOpacity
                           style={styles.closePanelBtn}
                           onPress={() => setSelectedDeviceId(null)}
@@ -831,7 +828,7 @@ export default function DashboardScreen() {
                               : '#047857';
 
                             return (
-                              <View key={paramName} style={[styles.paramBox, boxStyle]}>
+                              <View key={paramName} style={[styles.paramBox, isMobile && styles.paramBoxMobile, boxStyle]}>
                                 <View style={styles.paramBoxTop}>
                                   <Text style={styles.paramLabel}>{paramName}</Text>
                                   <View style={[styles.paramTierBadge, tierBadgeStyle]}>
@@ -884,7 +881,7 @@ export default function DashboardScreen() {
 
                     {/* Device Metadata & Communication Summary */}
                     <View style={styles.detailCardMetaFooter}>
-                      <View style={styles.metaRow}>
+                      <View style={[styles.metaRow, isMobile && styles.metaRowMobile]}>
                         <Text style={styles.metaLabel}>🕒 Last Communication:</Text>
                         <Text style={styles.metaValue}>
                           {live?.lastDataReceived || dev.lastDataReceived
@@ -894,7 +891,7 @@ export default function DashboardScreen() {
                             : 'Never'}
                         </Text>
                       </View>
-                      <View style={styles.metaRow}>
+                      <View style={[styles.metaRow, isMobile && styles.metaRowMobile]}>
                         <Text style={styles.metaLabel}>👤 Assigned Manager:</Text>
                         <Text style={styles.metaValue}>
                           {dev.assignedManagerUser
@@ -902,7 +899,7 @@ export default function DashboardScreen() {
                             : 'Accessible to all managers in branch'}
                         </Text>
                       </View>
-                      <View style={styles.metaRow}>
+                      <View style={[styles.metaRow, isMobile && styles.metaRowMobile]}>
                         <Text style={styles.metaLabel}>⏱️ Offline Threshold:</Text>
                         <Text style={styles.metaValue}>
                           {dev.offlineThresholdMinutes} minutes
@@ -1571,5 +1568,33 @@ const styles = StyleSheet.create({
     color: '#dc2626',
     fontSize: 11,
     fontWeight: '700',
+  },
+
+  // Responsive Mobile Enhancements
+  horizontalDeviceCardMobile: {
+    width: 240,
+    padding: 12,
+  },
+  detailCardMobile: {
+    padding: 14,
+    gap: 12,
+  },
+  detailCardHeaderMobile: {
+    flexDirection: 'column',
+    gap: 10,
+  },
+  detailCardActionButtonsMobile: {
+    width: '100%',
+    justifyContent: 'flex-start',
+  },
+  paramBoxMobile: {
+    width: '100%',
+    minWidth: '100%',
+    flex: undefined,
+  },
+  metaRowMobile: {
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: 2,
   },
 });
