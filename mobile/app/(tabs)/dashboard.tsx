@@ -117,44 +117,6 @@ export default function DashboardScreen() {
   const [error, setError] = useState<string | null>(null);
 
   const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null);
-  const [hoveredDeviceId, setHoveredDeviceId] = useState<string | null>(null);
-  const [touchActiveDeviceId, setTouchActiveDeviceId] = useState<string | null>(null);
-  const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const handleCardHoverIn = (deviceId: string) => {
-    if (hoverTimeoutRef.current) {
-      clearTimeout(hoverTimeoutRef.current);
-      hoverTimeoutRef.current = null;
-    }
-    setHoveredDeviceId(deviceId);
-  };
-
-  const handleCardHoverOut = () => {
-    if (hoverTimeoutRef.current) {
-      clearTimeout(hoverTimeoutRef.current);
-    }
-    hoverTimeoutRef.current = setTimeout(() => {
-      setHoveredDeviceId(null);
-      setTouchActiveDeviceId(null);
-    }, 280);
-  };
-
-  const handleDetailHoverIn = () => {
-    if (hoverTimeoutRef.current) {
-      clearTimeout(hoverTimeoutRef.current);
-      hoverTimeoutRef.current = null;
-    }
-  };
-
-  const handleDetailHoverOut = () => {
-    if (hoverTimeoutRef.current) {
-      clearTimeout(hoverTimeoutRef.current);
-    }
-    hoverTimeoutRef.current = setTimeout(() => {
-      setHoveredDeviceId(null);
-      setTouchActiveDeviceId(null);
-    }, 280);
-  };
 
   const [selectedBranch, setSelectedBranch] = useState<string>('ALL');
   const [selectedUnit, setSelectedUnit] = useState<string>('ALL');
@@ -288,12 +250,11 @@ export default function DashboardScreen() {
     });
   }, [devices, selectedBranch, selectedUnit]);
 
-  // Selected device for live detail inspection: ONLY shown after hover (or touch on mobile)
+  // Selected device for live detail inspection: ONLY shown after CLICK (null by default)
   const effectiveSelectedDevice = useMemo(() => {
-    const activeId = hoveredDeviceId || touchActiveDeviceId;
-    if (!activeId) return null;
-    return filteredDevices.find((d) => d.id === activeId) || null;
-  }, [hoveredDeviceId, touchActiveDeviceId, filteredDevices]);
+    if (!selectedDeviceId) return null;
+    return filteredDevices.find((d) => d.id === selectedDeviceId) || null;
+  }, [selectedDeviceId, filteredDevices]);
 
   async function handleDeleteDevice(deviceId: string, deviceName: string) {
     if (!isSuperAdmin) {
@@ -635,17 +596,16 @@ export default function DashboardScreen() {
                 const isSelected = effectiveSelectedDevice?.id === device.id;
 
                 return (
-                  <Pressable
+                  <TouchableOpacity
                     key={device.id}
                     style={[
                       styles.horizontalDeviceCard,
                       isSelected && styles.horizontalDeviceCardSelected,
                     ]}
-                    onHoverIn={() => handleCardHoverIn(device.id)}
-                    onHoverOut={handleCardHoverOut}
                     onPress={() => {
-                      setTouchActiveDeviceId((prev) => (prev === device.id ? null : device.id));
+                      setSelectedDeviceId((prev) => (prev === device.id ? null : device.id));
                     }}
+                    activeOpacity={0.7}
                   >
                     {/* Top Row: Device Name & Status */}
                     <View style={styles.hCardHeader}>
@@ -686,7 +646,7 @@ export default function DashboardScreen() {
                       </Text>
                     </View>
 
-                    {/* Card Footer: Channel & Hover indicator */}
+                    {/* Card Footer: Channel & Click indicator */}
                     <View style={styles.hCardFooter}>
                       <Text style={styles.hCardMeta}>
                         Ch: {device.channelId || 'N/A'}
@@ -698,15 +658,15 @@ export default function DashboardScreen() {
                             : styles.hCardUnselectedIndicator
                         }
                       >
-                        {isSelected ? '👁️ Viewing' : 'Hover to View'}
+                        {isSelected ? '✓ Selected' : 'Click to View'}
                       </Text>
                     </View>
-                  </Pressable>
+                  </TouchableOpacity>
                 );
               })}
             </ScrollView>
 
-            {/* Below the horizontal cards: Detail Section ONLY SHOWN AFTER HOVER */}
+            {/* Below the horizontal cards: Detail Section ONLY SHOWN AFTER CLICK */}
             {effectiveSelectedDevice ? (
               (() => {
                 const dev = effectiveSelectedDevice;
@@ -727,11 +687,7 @@ export default function DashboardScreen() {
                 const drinkInfo = getDrinkabilityInfo(status, severity, hasData);
 
                 return (
-                  <Pressable
-                    style={styles.selectedDeviceDetailCard}
-                    onHoverIn={handleDetailHoverIn}
-                    onHoverOut={handleDetailHoverOut}
-                  >
+                  <View style={styles.selectedDeviceDetailCard}>
                     {/* Selected Device Header */}
                     <View style={styles.detailCardHeader}>
                       <View style={{ flex: 1, marginRight: 8 }}>
@@ -759,15 +715,25 @@ export default function DashboardScreen() {
                         </Text>
                       </View>
 
-                      {isSuperAdmin && (
+                      <View style={styles.detailCardActionButtons}>
                         <TouchableOpacity
-                          style={styles.deleteBtn}
-                          onPress={() => handleDeleteDevice(dev.id, dev.name || dev.deviceId)}
+                          style={styles.closePanelBtn}
+                          onPress={() => setSelectedDeviceId(null)}
                           activeOpacity={0.7}
                         >
-                          <Text style={styles.deleteBtnText}>🗑️ Delete Station</Text>
+                          <Text style={styles.closePanelBtnText}>✕ Close</Text>
                         </TouchableOpacity>
-                      )}
+
+                        {isSuperAdmin && (
+                          <TouchableOpacity
+                            style={styles.deleteBtn}
+                            onPress={() => handleDeleteDevice(dev.id, dev.name || dev.deviceId)}
+                            activeOpacity={0.7}
+                          >
+                            <Text style={styles.deleteBtnText}>🗑️ Delete Station</Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
                     </View>
 
                     {/* Drinkability Assessment Banner */}
@@ -944,13 +910,13 @@ export default function DashboardScreen() {
                         </Text>
                       </View>
                     </View>
-                  </Pressable>
+                  </View>
                 );
               })()
             ) : (
               <View style={styles.hoverPromptBox}>
                 <Text style={styles.hoverPromptText}>
-                  👆 Hover over any station card above to inspect real-time sensor values (pH, Turbidity, TDS)
+                  👆 Click on any station card above to inspect real-time sensor values (pH, Turbidity, TDS)
                 </Text>
               </View>
             )}
@@ -1578,6 +1544,26 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#334155',
     fontWeight: '500',
+  },
+
+  detailCardActionButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  closePanelBtn: {
+    backgroundColor: '#f1f5f9',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+  },
+  closePanelBtnText: {
+    color: '#475569',
+    fontSize: 11,
+    fontWeight: '700',
   },
 
   // SuperAdmin Delete
