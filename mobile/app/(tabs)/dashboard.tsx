@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -667,8 +667,7 @@ export default function DashboardScreen() {
             </ScrollView>
 
             {/* Below the horizontal cards: Detail Section ONLY SHOWN AFTER CLICK */}
-            {effectiveSelectedDevice ? (
-              (() => {
+            {effectiveSelectedDevice && (() => {
                 const dev = effectiveSelectedDevice;
                 const live = deviceLiveMap[dev.id];
                 const status = live?.status || dev.status || 'No Recent Data';
@@ -912,14 +911,7 @@ export default function DashboardScreen() {
                     </View>
                   </View>
                 );
-              })()
-            ) : (
-              <View style={styles.hoverPromptBox}>
-                <Text style={styles.hoverPromptText}>
-                  👆 Click on any station card above to inspect real-time sensor values (pH, Turbidity, TDS)
-                </Text>
-              </View>
-            )}
+              })()}
           </View>
         )}
       </ScrollView>
@@ -1579,28 +1571,5 @@ const styles = StyleSheet.create({
     color: '#dc2626',
     fontSize: 11,
     fontWeight: '700',
-  },
-
-  // Hover Prompt Box (Shown when no card is hovered)
-  hoverPromptBox: {
-    backgroundColor: '#ffffff',
-    borderRadius: 12,
-    borderWidth: 1.5,
-    borderStyle: 'dashed',
-    borderColor: '#cbd5e1',
-    padding: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.02,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 1 },
-    elevation: 1,
-  },
-  hoverPromptText: {
-    fontSize: 13,
-    color: '#64748b',
-    fontWeight: '600',
-    textAlign: 'center',
   },
 });
