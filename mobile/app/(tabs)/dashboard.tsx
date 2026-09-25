@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -117,6 +117,45 @@ export default function DashboardScreen() {
   const [error, setError] = useState<string | null>(null);
 
   const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null);
+  const [hoveredDeviceId, setHoveredDeviceId] = useState<string | null>(null);
+  const [touchActiveDeviceId, setTouchActiveDeviceId] = useState<string | null>(null);
+  const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleCardHoverIn = (deviceId: string) => {
+    if (hoverTimeoutRef.current) {
+      clearTimeout(hoverTimeoutRef.current);
+      hoverTimeoutRef.current = null;
+    }
+    setHoveredDeviceId(deviceId);
+  };
+
+  const handleCardHoverOut = () => {
+    if (hoverTimeoutRef.current) {
+      clearTimeout(hoverTimeoutRef.current);
+    }
+    hoverTimeoutRef.current = setTimeout(() => {
+      setHoveredDeviceId(null);
+      setTouchActiveDeviceId(null);
+    }, 280);
+  };
+
+  const handleDetailHoverIn = () => {
+    if (hoverTimeoutRef.current) {
+      clearTimeout(hoverTimeoutRef.current);
+      hoverTimeoutRef.current = null;
+    }
+  };
+
+  const handleDetailHoverOut = () => {
+    if (hoverTimeoutRef.current) {
+      clearTimeout(hoverTimeoutRef.current);
+    }
+    hoverTimeoutRef.current = setTimeout(() => {
+      setHoveredDeviceId(null);
+      setTouchActiveDeviceId(null);
+    }, 280);
+  };
+
   const [selectedBranch, setSelectedBranch] = useState<string>('ALL');
   const [selectedUnit, setSelectedUnit] = useState<string>('ALL');
 
@@ -249,14 +288,12 @@ export default function DashboardScreen() {
     });
   }, [devices, selectedBranch, selectedUnit]);
 
-  // Selected device for live detail inspection (defaults to first device)
+  // Selected device for live detail inspection: ONLY shown after hover (or touch on mobile)
   const effectiveSelectedDevice = useMemo(() => {
-    if (selectedDeviceId) {
-      const found = filteredDevices.find((d) => d.id === selectedDeviceId);
-      if (found) return found;
-    }
-    return filteredDevices[0] || null;
-  }, [selectedDeviceId, filteredDevices]);
+    const activeId = hoveredDeviceId || touchActiveDeviceId;
+    if (!activeId) return null;
+    return filteredDevices.find((d) => d.id === activeId) || null;
+  }, [hoveredDeviceId, touchActiveDeviceId, filteredDevices]);
 
   async function handleDeleteDevice(deviceId: string, deviceName: string) {
     if (!isSuperAdmin) {
@@ -598,14 +635,17 @@ export default function DashboardScreen() {
                 const isSelected = effectiveSelectedDevice?.id === device.id;
 
                 return (
-                  <TouchableOpacity
+                  <Pressable
                     key={device.id}
                     style={[
                       styles.horizontalDeviceCard,
                       isSelected && styles.horizontalDeviceCardSelected,
                     ]}
-                    onPress={() => setSelectedDeviceId(device.id)}
-                    activeOpacity={0.8}
+                    onHoverIn={() => handleCardHoverIn(device.id)}
+                    onHoverOut={handleCardHoverOut}
+                    onPress={() => {
+                      setTouchActiveDeviceId((prev) => (prev === device.id ? null : device.id));
+                    }}
                   >
                     {/* Top Row: Device Name & Status */}
                     <View style={styles.hCardHeader}>
@@ -646,7 +686,7 @@ export default function DashboardScreen() {
                       </Text>
                     </View>
 
-                    {/* Card Footer: Channel & Tap indicator */}
+                    {/* Card Footer: Channel & Hover indicator */}
                     <View style={styles.hCardFooter}>
                       <Text style={styles.hCardMeta}>
                         Ch: {device.channelId || 'N/A'}
@@ -658,250 +698,262 @@ export default function DashboardScreen() {
                             : styles.hCardUnselectedIndicator
                         }
                       >
-                        {isSelected ? '✓ Selected' : 'Tap to View'}
+                        {isSelected ? '👁️ Viewing' : 'Hover to View'}
                       </Text>
                     </View>
-                  </TouchableOpacity>
+                  </Pressable>
                 );
               })}
             </ScrollView>
 
-            {/* Below the horizontal cards: Detail Section for Selected Device */}
-            {effectiveSelectedDevice && (() => {
-              const dev = effectiveSelectedDevice;
-              const live = deviceLiveMap[dev.id];
-              const status = live?.status || dev.status || 'No Recent Data';
-              const telemetry = live?.telemetry;
-              const parameters = telemetry?.parameters || {};
-              const hasData = Boolean(telemetry && Object.keys(parameters).length > 0);
-              const severity =
-                telemetry?.severity ||
-                ((status as string) === 'Danger'
-                  ? 'DANGER'
-                  : (status as string) === 'Warning'
-                  ? 'WARNING'
-                  : (status as string) === 'Safe'
-                  ? 'NORMAL'
-                  : undefined);
-              const drinkInfo = getDrinkabilityInfo(status, severity, hasData);
+            {/* Below the horizontal cards: Detail Section ONLY SHOWN AFTER HOVER */}
+            {effectiveSelectedDevice ? (
+              (() => {
+                const dev = effectiveSelectedDevice;
+                const live = deviceLiveMap[dev.id];
+                const status = live?.status || dev.status || 'No Recent Data';
+                const telemetry = live?.telemetry;
+                const parameters = telemetry?.parameters || {};
+                const hasData = Boolean(telemetry && Object.keys(parameters).length > 0);
+                const severity =
+                  telemetry?.severity ||
+                  ((status as string) === 'Danger'
+                    ? 'DANGER'
+                    : (status as string) === 'Warning'
+                    ? 'WARNING'
+                    : (status as string) === 'Safe'
+                    ? 'NORMAL'
+                    : undefined);
+                const drinkInfo = getDrinkabilityInfo(status, severity, hasData);
 
-              return (
-                <View style={styles.selectedDeviceDetailCard}>
-                  {/* Selected Device Header */}
-                  <View style={styles.detailCardHeader}>
-                    <View style={{ flex: 1, marginRight: 8 }}>
-                      <View style={styles.detailTitleRow}>
-                        <Text style={styles.detailCardStationName}>
-                          {dev.name || dev.deviceId}
-                        </Text>
-                        <StatusBadge status={status} />
-                      </View>
-                      <View style={styles.branchUnitRow}>
-                        <Text style={styles.deviceBranchBadge}>
-                          🏢 Branch: {dev.branch || 'Main Branch'}
-                        </Text>
-                        <Text style={styles.deviceUnitBadge}>
-                          📍 Unit: {dev.unit || 'Unit 1'}
-                        </Text>
-                        {dev.location ? (
-                          <Text style={styles.deviceLocationBadge}>
-                            📌 {dev.location}
-                          </Text>
-                        ) : null}
-                      </View>
-                      <Text style={styles.detailCardSubtitle}>
-                        Hardware ID: {dev.deviceId} · ThingSpeak Channel: {dev.channelId}
-                      </Text>
-                    </View>
-
-                    {isSuperAdmin && (
-                      <TouchableOpacity
-                        style={styles.deleteBtn}
-                        onPress={() => handleDeleteDevice(dev.id, dev.name || dev.deviceId)}
-                        activeOpacity={0.7}
-                      >
-                        <Text style={styles.deleteBtnText}>🗑️ Delete Station</Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-
-                  {/* Drinkability Assessment Banner */}
-                  <View
-                    style={[
-                      styles.drinkabilityBanner,
-                      {
-                        backgroundColor: drinkInfo.bannerBg,
-                        borderColor: drinkInfo.bannerBorder,
-                      },
-                    ]}
+                return (
+                  <Pressable
+                    style={styles.selectedDeviceDetailCard}
+                    onHoverIn={handleDetailHoverIn}
+                    onHoverOut={handleDetailHoverOut}
                   >
-                    <Text style={styles.drinkabilityBannerIcon}>
-                      {drinkInfo.bannerIcon}
-                    </Text>
-                    <View style={{ flex: 1 }}>
-                      <Text
-                        style={[
-                          styles.drinkabilityBannerTitle,
-                          { color: drinkInfo.textColor },
-                        ]}
-                      >
-                        {drinkInfo.drinkableMessage}
-                      </Text>
-                      <Text
-                        style={[
-                          styles.drinkabilityBannerDesc,
-                          { color: drinkInfo.textColor },
-                        ]}
-                      >
-                        {drinkInfo.detailMsg}
-                      </Text>
-                    </View>
-                  </View>
-
-                  {/* Real-Time Sensor Values (TDS, pH, Turbidity) */}
-                  <View style={styles.valuesSection}>
-                    <View style={styles.valuesSectionHeader}>
-                      <Text style={styles.valuesSectionTitle}>
-                        📊 Current Sensor Values (Real-Time)
-                      </Text>
-                      {live?.lastDataReceived && (
-                        <Text style={styles.valuesTimestamp}>
-                          Updated: {new Date(live.lastDataReceived).toLocaleTimeString()}
+                    {/* Selected Device Header */}
+                    <View style={styles.detailCardHeader}>
+                      <View style={{ flex: 1, marginRight: 8 }}>
+                        <View style={styles.detailTitleRow}>
+                          <Text style={styles.detailCardStationName}>
+                            {dev.name || dev.deviceId}
+                          </Text>
+                          <StatusBadge status={status} />
+                        </View>
+                        <View style={styles.branchUnitRow}>
+                          <Text style={styles.deviceBranchBadge}>
+                            🏢 Branch: {dev.branch || 'Main Branch'}
+                          </Text>
+                          <Text style={styles.deviceUnitBadge}>
+                            📍 Unit: {dev.unit || 'Unit 1'}
+                          </Text>
+                          {dev.location ? (
+                            <Text style={styles.deviceLocationBadge}>
+                              📌 {dev.location}
+                            </Text>
+                          ) : null}
+                        </View>
+                        <Text style={styles.detailCardSubtitle}>
+                          Hardware ID: {dev.deviceId} · ThingSpeak Channel: {dev.channelId}
                         </Text>
+                      </View>
+
+                      {isSuperAdmin && (
+                        <TouchableOpacity
+                          style={styles.deleteBtn}
+                          onPress={() => handleDeleteDevice(dev.id, dev.name || dev.deviceId)}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={styles.deleteBtnText}>🗑️ Delete Station</Text>
+                        </TouchableOpacity>
                       )}
                     </View>
 
-                    {hasData ? (
-                      <View style={styles.paramGrid}>
-                        {Object.entries(parameters).map(([paramName, paramData]) => {
-                          const val = paramData.value;
-                          const paramSeverity = paramData.severity;
-                          const isParamDanger = paramSeverity === 'DANGER';
-                          const isParamWarn = paramSeverity === 'WARNING';
-                          const isParamAlert = paramSeverity === 'ALERT';
-
-                          const boxStyle = isParamDanger
-                            ? styles.paramBoxDanger
-                            : isParamWarn
-                            ? styles.paramBoxWarn
-                            : isParamAlert
-                            ? styles.paramBoxAlert
-                            : null;
-
-                          const valStyle = isParamDanger
-                            ? styles.paramValueDanger
-                            : isParamWarn
-                            ? styles.paramValueWarn
-                            : isParamAlert
-                            ? styles.paramValueAlert
-                            : null;
-
-                          const tierLabel = isParamDanger
-                            ? 'DANGER'
-                            : isParamWarn
-                            ? 'WARNING'
-                            : isParamAlert
-                            ? 'ALERT'
-                            : 'NORMAL';
-
-                          const tierBadgeStyle = isParamDanger
-                            ? styles.tierDanger
-                            : isParamWarn
-                            ? styles.tierWarn
-                            : isParamAlert
-                            ? styles.tierAlert
-                            : styles.tierNormal;
-
-                          const tierTextColor = isParamDanger
-                            ? '#b91c1c'
-                            : isParamWarn
-                            ? '#c2410c'
-                            : isParamAlert
-                            ? '#b45309'
-                            : '#047857';
-
-                          return (
-                            <View key={paramName} style={[styles.paramBox, boxStyle]}>
-                              <View style={styles.paramBoxTop}>
-                                <Text style={styles.paramLabel}>{paramName}</Text>
-                                <View style={[styles.paramTierBadge, tierBadgeStyle]}>
-                                  <Text style={[styles.paramTierText, { color: tierTextColor }]}>
-                                    {tierLabel}
-                                  </Text>
-                                </View>
-                              </View>
-                              <Text style={[styles.paramValue, valStyle]}>
-                                {val !== null && val !== undefined
-                                  ? `${val} ${paramData.unit}`
-                                  : '--'}
-                              </Text>
-                              {paramData.targetDesc ? (
-                                <Text style={styles.thresholdSub}>
-                                  Target: {paramData.targetDesc}
-                                </Text>
-                              ) : paramData.minThreshold !== null || paramData.maxThreshold !== null ? (
-                                <Text style={styles.thresholdSub}>
-                                  Limits: {paramData.minThreshold ?? 0} -{' '}
-                                  {paramData.maxThreshold ?? '∞'} {paramData.unit}
-                                </Text>
-                              ) : null}
-                            </View>
-                          );
-                        })}
-                      </View>
-                    ) : (
-                      <View style={styles.noDataBox}>
-                        <Text style={styles.noDataText}>
-                          {live?.isStale
-                            ? '⚠️ Showing cached readings'
-                            : 'Awaiting sensor feeds from ThingSpeak...'}
+                    {/* Drinkability Assessment Banner */}
+                    <View
+                      style={[
+                        styles.drinkabilityBanner,
+                        {
+                          backgroundColor: drinkInfo.bannerBg,
+                          borderColor: drinkInfo.bannerBorder,
+                        },
+                      ]}
+                    >
+                      <Text style={styles.drinkabilityBannerIcon}>
+                        {drinkInfo.bannerIcon}
+                      </Text>
+                      <View style={{ flex: 1 }}>
+                        <Text
+                          style={[
+                            styles.drinkabilityBannerTitle,
+                            { color: drinkInfo.textColor },
+                          ]}
+                        >
+                          {drinkInfo.drinkableMessage}
                         </Text>
+                        <Text
+                          style={[
+                            styles.drinkabilityBannerDesc,
+                            { color: drinkInfo.textColor },
+                          ]}
+                        >
+                          {drinkInfo.detailMsg}
+                        </Text>
+                      </View>
+                    </View>
+
+                    {/* Real-Time Sensor Values (TDS, pH, Turbidity) */}
+                    <View style={styles.valuesSection}>
+                      <View style={styles.valuesSectionHeader}>
+                        <Text style={styles.valuesSectionTitle}>
+                          📊 Current Sensor Values (Real-Time)
+                        </Text>
+                        {live?.lastDataReceived && (
+                          <Text style={styles.valuesTimestamp}>
+                            Updated: {new Date(live.lastDataReceived).toLocaleTimeString()}
+                          </Text>
+                        )}
+                      </View>
+
+                      {hasData ? (
+                        <View style={styles.paramGrid}>
+                          {Object.entries(parameters).map(([paramName, paramData]) => {
+                            const val = paramData.value;
+                            const paramSeverity = paramData.severity;
+                            const isParamDanger = paramSeverity === 'DANGER';
+                            const isParamWarn = paramSeverity === 'WARNING';
+                            const isParamAlert = paramSeverity === 'ALERT';
+
+                            const boxStyle = isParamDanger
+                              ? styles.paramBoxDanger
+                              : isParamWarn
+                              ? styles.paramBoxWarn
+                              : isParamAlert
+                              ? styles.paramBoxAlert
+                              : null;
+
+                            const valStyle = isParamDanger
+                              ? styles.paramValueDanger
+                              : isParamWarn
+                              ? styles.paramValueWarn
+                              : isParamAlert
+                              ? styles.paramValueAlert
+                              : null;
+
+                            const tierLabel = isParamDanger
+                              ? 'DANGER'
+                              : isParamWarn
+                              ? 'WARNING'
+                              : isParamAlert
+                              ? 'ALERT'
+                              : 'NORMAL';
+
+                            const tierBadgeStyle = isParamDanger
+                              ? styles.tierDanger
+                              : isParamWarn
+                              ? styles.tierWarn
+                              : isParamAlert
+                              ? styles.tierAlert
+                              : styles.tierNormal;
+
+                            const tierTextColor = isParamDanger
+                              ? '#b91c1c'
+                              : isParamWarn
+                              ? '#c2410c'
+                              : isParamAlert
+                              ? '#b45309'
+                              : '#047857';
+
+                            return (
+                              <View key={paramName} style={[styles.paramBox, boxStyle]}>
+                                <View style={styles.paramBoxTop}>
+                                  <Text style={styles.paramLabel}>{paramName}</Text>
+                                  <View style={[styles.paramTierBadge, tierBadgeStyle]}>
+                                    <Text style={[styles.paramTierText, { color: tierTextColor }]}>
+                                      {tierLabel}
+                                    </Text>
+                                  </View>
+                                </View>
+                                <Text style={[styles.paramValue, valStyle]}>
+                                  {val !== null && val !== undefined
+                                    ? `${val} ${paramData.unit}`
+                                    : '--'}
+                                </Text>
+                                {paramData.targetDesc ? (
+                                  <Text style={styles.thresholdSub}>
+                                    Target: {paramData.targetDesc}
+                                  </Text>
+                                ) : paramData.minThreshold !== null || paramData.maxThreshold !== null ? (
+                                  <Text style={styles.thresholdSub}>
+                                    Limits: {paramData.minThreshold ?? 0} -{' '}
+                                    {paramData.maxThreshold ?? '∞'} {paramData.unit}
+                                  </Text>
+                                ) : null}
+                              </View>
+                            );
+                          })}
+                        </View>
+                      ) : (
+                        <View style={styles.noDataBox}>
+                          <Text style={styles.noDataText}>
+                            {live?.isStale
+                              ? '⚠️ Showing cached readings'
+                              : 'Awaiting sensor feeds from ThingSpeak...'}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+
+                    {/* Active Triggered Alerts (if any) */}
+                    {telemetry?.alerts && telemetry.alerts.length > 0 && (
+                      <View style={styles.activeAlertsBox}>
+                        <Text style={styles.activeAlertsTitle}>🚨 Active Triggered Alerts:</Text>
+                        {telemetry.alerts.map((alertText, idx) => (
+                          <Text key={idx} style={styles.activeAlertItem}>
+                            • {alertText}
+                          </Text>
+                        ))}
                       </View>
                     )}
-                  </View>
 
-                  {/* Active Triggered Alerts (if any) */}
-                  {telemetry?.alerts && telemetry.alerts.length > 0 && (
-                    <View style={styles.activeAlertsBox}>
-                      <Text style={styles.activeAlertsTitle}>🚨 Active Triggered Alerts:</Text>
-                      {telemetry.alerts.map((alertText, idx) => (
-                        <Text key={idx} style={styles.activeAlertItem}>
-                          • {alertText}
+                    {/* Device Metadata & Communication Summary */}
+                    <View style={styles.detailCardMetaFooter}>
+                      <View style={styles.metaRow}>
+                        <Text style={styles.metaLabel}>🕒 Last Communication:</Text>
+                        <Text style={styles.metaValue}>
+                          {live?.lastDataReceived || dev.lastDataReceived
+                            ? new Date(
+                                live?.lastDataReceived || dev.lastDataReceived!
+                              ).toLocaleString()
+                            : 'Never'}
                         </Text>
-                      ))}
+                      </View>
+                      <View style={styles.metaRow}>
+                        <Text style={styles.metaLabel}>👤 Assigned Manager:</Text>
+                        <Text style={styles.metaValue}>
+                          {dev.assignedManagerUser
+                            ? `${dev.assignedManagerUser.name} (${dev.assignedManagerUser.email})`
+                            : 'Accessible to all managers in branch'}
+                        </Text>
+                      </View>
+                      <View style={styles.metaRow}>
+                        <Text style={styles.metaLabel}>⏱️ Offline Threshold:</Text>
+                        <Text style={styles.metaValue}>
+                          {dev.offlineThresholdMinutes} minutes
+                        </Text>
+                      </View>
                     </View>
-                  )}
-
-                  {/* Device Metadata & Communication Summary */}
-                  <View style={styles.detailCardMetaFooter}>
-                    <View style={styles.metaRow}>
-                      <Text style={styles.metaLabel}>🕒 Last Communication:</Text>
-                      <Text style={styles.metaValue}>
-                        {live?.lastDataReceived || dev.lastDataReceived
-                          ? new Date(
-                              live?.lastDataReceived || dev.lastDataReceived!
-                            ).toLocaleString()
-                          : 'Never'}
-                      </Text>
-                    </View>
-                    <View style={styles.metaRow}>
-                      <Text style={styles.metaLabel}>👤 Assigned Manager:</Text>
-                      <Text style={styles.metaValue}>
-                        {dev.assignedManagerUser
-                          ? `${dev.assignedManagerUser.name} (${dev.assignedManagerUser.email})`
-                          : 'Accessible to all managers in branch'}
-                      </Text>
-                    </View>
-                    <View style={styles.metaRow}>
-                      <Text style={styles.metaLabel}>⏱️ Offline Threshold:</Text>
-                      <Text style={styles.metaValue}>
-                        {dev.offlineThresholdMinutes} minutes
-                      </Text>
-                    </View>
-                  </View>
-                </View>
-              );
-            })()}
+                  </Pressable>
+                );
+              })()
+            ) : (
+              <View style={styles.hoverPromptBox}>
+                <Text style={styles.hoverPromptText}>
+                  👆 Hover over any station card above to inspect real-time sensor values (pH, Turbidity, TDS)
+                </Text>
+              </View>
+            )}
           </View>
         )}
       </ScrollView>
@@ -1541,5 +1593,28 @@ const styles = StyleSheet.create({
     color: '#dc2626',
     fontSize: 11,
     fontWeight: '700',
+  },
+
+  // Hover Prompt Box (Shown when no card is hovered)
+  hoverPromptBox: {
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    borderColor: '#cbd5e1',
+    padding: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.02,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
+  },
+  hoverPromptText: {
+    fontSize: 13,
+    color: '#64748b',
+    fontWeight: '600',
+    textAlign: 'center',
   },
 });
