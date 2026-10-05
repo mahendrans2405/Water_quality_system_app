@@ -134,11 +134,22 @@ export default function ReadingsScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
-      <View style={[styles.content, { maxWidth: 1080, width: '100%', alignSelf: 'center', paddingBottom: Math.max(insets.bottom, 16) }]}>
+      <ScrollView
+        contentContainerStyle={[
+          styles.content,
+          {
+            maxWidth: 1080,
+            width: '100%',
+            alignSelf: 'center',
+            paddingBottom: Math.max(insets.bottom, 24) + 24,
+          },
+        ]}
+      >
         {/* Header Title & Corner Date Picker */}
         <View style={[styles.headerRow, isMobile && styles.headerRowMobile]}>
           <View style={{ flex: isMobile ? undefined : 1 }}>
             <Text style={styles.title}>Historical Readings</Text>
+            <Text style={styles.ipdSubtitle}>Next-Gen Water Safety · IPD - 342</Text>
             <Text style={styles.subtitle}>
               Sensor logs (Latest at top · {sortedItems.length} records)
             </Text>
@@ -188,12 +199,12 @@ export default function ReadingsScreen() {
         )}
 
         {/* Table Toolbar & Export Bar */}
-        <View style={styles.toolbar}>
+        <View style={[styles.toolbar, isMobile && styles.toolbarMobile]}>
           <Text style={styles.recordCountLabel}>
             Telemetry Feed Table ({sortedItems.length} records)
           </Text>
 
-          <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+          <View style={styles.toolbarActions}>
             <TouchableOpacity style={styles.refreshButton} onPress={loadTelemetry} disabled={loading}>
               <Text style={styles.refreshButtonText}>{loading ? '...' : '🔄 Refresh'}</Text>
             </TouchableOpacity>
@@ -288,7 +299,7 @@ export default function ReadingsScreen() {
             </ScrollView>
           </View>
         )}
-      </View>
+      </ScrollView>
 
       {/* Export CSV Modal */}
       {selectedDevice && (
@@ -328,6 +339,14 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '800',
     color: '#0f172a',
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
+  },
+  ipdSubtitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#64748b',
+    letterSpacing: 1.2,
+    marginTop: 2,
     fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
   },
   subtitle: {
@@ -467,5 +486,16 @@ const styles = StyleSheet.create({
   },
   cellDanger: {
     color: '#dc2626',
+  },
+  toolbarMobile: {
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  toolbarActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
   },
 });

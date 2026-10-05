@@ -25,7 +25,7 @@ import type { Branch, Company, DeviceSummary, FieldMapping, Unit } from '../../s
 export default function AdminScreen() {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
-  const isMobile = width < 650;
+  const isMobile = width < 768;
 
   const router = useRouter();
   const user = authStore((s) => s.user);
@@ -584,9 +584,10 @@ export default function AdminScreen() {
       >
         {/* Header */}
         <View style={styles.header}>
-          <View style={styles.headerTop}>
-            <View style={{ flex: 1 }}>
+          <View style={[styles.headerTop, isMobile && styles.headerTopMobile]}>
+            <View style={{ flex: isMobile ? undefined : 1 }}>
               <Text style={styles.title}>Super Admin Console</Text>
+              <Text style={styles.ipdSubtitle}>Next-Gen Water Safety · IPD - 342</Text>
               <Text style={styles.userInfo}>
                 System Administrator: {user.name} ({user.email})
               </Text>
@@ -664,14 +665,14 @@ export default function AdminScreen() {
         {/* TAB 1: Companies */}
         {activeTab === 'companies' && (
           <View style={styles.sectionCard}>
-            <View style={styles.sectionHeader}>
+            <View style={[styles.sectionHeader, isMobile && styles.sectionHeaderMobile]}>
               <View>
                 <Text style={styles.sectionTitle}>Client Organizations ({companies.length})</Text>
                 <Text style={styles.formSubtitle}>
                   Manage tenant companies, branches, and manager quotas.
                 </Text>
               </View>
-              <View style={{ flexDirection: 'row', gap: 8 }}>
+              <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
                 <TouchableOpacity style={styles.createBtn} onPress={() => router.push('/modal')}>
                   <Text style={styles.createBtnText}>+ Create Company</Text>
                 </TouchableOpacity>
@@ -729,8 +730,8 @@ export default function AdminScreen() {
         {/* TAB 2: Branches & Units Management */}
         {activeTab === 'branches' && (
           <View style={styles.sectionCard}>
-            <View style={styles.sectionHeader}>
-              <View style={{ flex: 1 }}>
+            <View style={[styles.sectionHeader, isMobile && styles.sectionHeaderMobile]}>
+              <View style={{ flex: isMobile ? undefined : 1 }}>
                 <Text style={styles.sectionTitle}>
                   Branches & Units for {selectedCompany?.name || 'Selected Company'}
                 </Text>
@@ -738,7 +739,7 @@ export default function AdminScreen() {
                   Organize facilities into branches and monitoring units. Devices and managers will be assigned to specific branches and units.
                 </Text>
               </View>
-              <View style={{ flexDirection: 'row', gap: 8 }}>
+              <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
                 <TouchableOpacity
                   style={styles.createBtn}
                   onPress={() => setShowBranchForm((p) => !p)}
@@ -767,7 +768,7 @@ export default function AdminScreen() {
                   value={newBranchForm.name}
                   onChangeText={(txt) => setNewBranchForm((p) => ({ ...p, name: txt }))}
                 />
-                <View style={styles.formGrid}>
+                <View style={[styles.formGrid, isMobile && styles.formGridMobile]}>
                   <View style={{ flex: 1 }}>
                     <TextInput
                       style={styles.input}
@@ -821,9 +822,9 @@ export default function AdminScreen() {
 
                 return (
                   <View key={branch.name} style={styles.branchCard}>
-                    <View style={styles.branchHeaderRow}>
-                      <View style={{ flex: 1 }}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <View style={[styles.branchHeaderRow, isMobile && styles.branchHeaderRowMobile]}>
+                      <View style={{ flex: isMobile ? undefined : 1 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                           <Text style={styles.branchTitle}>{branch.name}</Text>
                           {branch.code ? <Text style={styles.branchCodeBadge}>{branch.code}</Text> : null}
                         </View>
@@ -832,7 +833,7 @@ export default function AdminScreen() {
                         ) : null}
                       </View>
 
-                      <View style={{ flexDirection: 'row', gap: 8 }}>
+                      <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
                         <TouchableOpacity
                           style={styles.addUnitBtn}
                           onPress={() => setShowUnitFormForBranch(isAddingUnit ? null : branch.name)}
@@ -855,7 +856,7 @@ export default function AdminScreen() {
                     {isAddingUnit && (
                       <View style={styles.unitFormBox}>
                         <Text style={styles.unitFormTitle}>Add Unit to {branch.name}</Text>
-                        <View style={styles.formGrid}>
+                        <View style={[styles.formGrid, isMobile && styles.formGridMobile]}>
                           <View style={{ flex: 1 }}>
                             <TextInput
                               style={styles.input}
@@ -913,14 +914,14 @@ export default function AdminScreen() {
         {/* TAB 3: IoT Devices (Super Admin Exclusivity) */}
         {activeTab === 'devices' && (
           <View style={styles.sectionCard}>
-            <View style={styles.sectionHeader}>
+            <View style={[styles.sectionHeader, isMobile && styles.sectionHeaderMobile]}>
               <View>
                 <Text style={styles.sectionTitle}>IoT Monitoring Devices ({devices.length})</Text>
                 <Text style={styles.formSubtitle}>
                   Only Super Admin has permission to add, configure, and manage sensor hardware.
                 </Text>
               </View>
-              <View style={{ flexDirection: 'row', gap: 8 }}>
+              <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
                 <TouchableOpacity
                   style={styles.createBtn}
                   onPress={() => setShowDeviceForm((p) => !p)}
@@ -1020,7 +1021,7 @@ export default function AdminScreen() {
                   onChangeText={(txt) => setDeviceForm((p) => ({ ...p, name: txt }))}
                 />
 
-                <View style={styles.formGrid}>
+                <View style={[styles.formGrid, isMobile && styles.formGridMobile]}>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.inputLabel}>ThingSpeak Channel ID *</Text>
                     <TextInput
@@ -1043,7 +1044,7 @@ export default function AdminScreen() {
                   </View>
                 </View>
 
-                <View style={styles.formGrid}>
+                <View style={[styles.formGrid, isMobile && styles.formGridMobile]}>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.inputLabel}>Physical Location / Description</Text>
                     <TextInput
@@ -1167,7 +1168,7 @@ export default function AdminScreen() {
 
           return (
             <View style={styles.sectionCard}>
-              <View style={styles.sectionHeader}>
+              <View style={[styles.sectionHeader, isMobile && styles.sectionHeaderMobile]}>
                 <View>
                   <Text style={styles.sectionTitle}>Manager Accounts Provisioning</Text>
                   <Text style={styles.formSubtitle}>
@@ -1181,8 +1182,8 @@ export default function AdminScreen() {
 
               {/* Manager Allocation & Quota Banner */}
               <View style={[styles.quotaBanner, isLimitReached ? styles.quotaBannerFull : styles.quotaBannerNormal]}>
-                <View style={styles.quotaHeaderRow}>
-                  <View style={{ flex: 1 }}>
+                <View style={[styles.quotaHeaderRow, isMobile && styles.quotaHeaderRowMobile]}>
+                  <View style={{ flex: isMobile ? undefined : 1 }}>
                     <Text style={styles.quotaTitle}>
                       {isLimitReached ? '⚠️ Manager Quota Reached' : '🛡️ Manager Allocation Quota'}
                     </Text>
@@ -1204,7 +1205,7 @@ export default function AdminScreen() {
                   </View>
                 </View>
 
-                <View style={styles.quotaStatsRow}>
+                <View style={[styles.quotaStatsRow, isMobile && styles.quotaStatsRowMobile]}>
                   <View style={styles.quotaStatItem}>
                     <Text style={styles.quotaStatLabel}>Total Allowed</Text>
                     <Text style={styles.quotaStatValue}>{managerLimit} Max</Text>
@@ -1430,9 +1431,9 @@ export default function AdminScreen() {
               {/* User List */}
               {loading && <ActivityIndicator style={{ marginVertical: 12 }} />}
               {users.map((u) => (
-                <View key={u.id} style={styles.userCard}>
+                <View key={u.id} style={[styles.userCard, isMobile && styles.userCardMobile]}>
                   <View style={{ flex: 1 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                       <Text style={styles.userName}>{u.name}</Text>
                       <Text style={styles.userRolePill}>{u.role}</Text>
                     </View>
@@ -1470,8 +1471,8 @@ export default function AdminScreen() {
         {/* TAB 5: Application Version & Updates Settings */}
         {activeTab === 'config' && (
           <View style={styles.sectionCard}>
-            <View style={styles.sectionHeader}>
-              <View style={{ flex: 1 }}>
+            <View style={[styles.sectionHeader, isMobile && styles.sectionHeaderMobile]}>
+              <View style={{ flex: isMobile ? undefined : 1 }}>
                 <Text style={styles.sectionTitle}>Settings & System Health</Text>
                 <Text style={styles.formSubtitle}>
                   Application version, software update check, and account session controls.
@@ -1592,6 +1593,14 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '800',
     color: '#0f172a',
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
+  },
+  ipdSubtitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#64748b',
+    letterSpacing: 1.2,
+    marginTop: 2,
     fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
   },
   userInfo: {
@@ -1737,6 +1746,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
     marginTop: 8,
     borderTopWidth: 1,
     borderTopColor: '#e2e8f0',
@@ -2032,6 +2043,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
     borderTopWidth: 1,
     borderTopColor: '#e2e8f0',
     paddingTop: 6,
@@ -2301,5 +2314,39 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 4,
     maxWidth: 360,
+  },
+  // Responsive Mobile Enhancements
+  headerTopMobile: {
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  sectionHeaderMobile: {
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  formGridMobile: {
+    flexDirection: 'column',
+    gap: 8,
+  },
+  branchHeaderRowMobile: {
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  quotaHeaderRowMobile: {
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  quotaStatsRowMobile: {
+    flexDirection: 'column',
+    gap: 8,
+  },
+  userCardMobile: {
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: 8,
   },
 });

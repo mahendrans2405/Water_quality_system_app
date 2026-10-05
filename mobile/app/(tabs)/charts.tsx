@@ -396,6 +396,7 @@ export default function ChartsScreen() {
         <View style={[styles.headerRow, isMobile && styles.headerRowMobile]}>
           <View style={{ flex: isMobile ? undefined : 1 }}>
             <Text style={styles.title}>IoT Telemetry Analytics</Text>
+            <Text style={styles.ipdSubtitle}>Next-Gen Water Safety · IPD - 342</Text>
             <Text style={styles.subtitle}>
               Interactive parameter curve with real-time cursor hover.
             </Text>
@@ -809,6 +810,14 @@ const styles = StyleSheet.create({
     color: '#0f172a',
     fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
   },
+  ipdSubtitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#64748b',
+    letterSpacing: 1.2,
+    marginTop: 2,
+    fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
+  },
   subtitle: {
     fontSize: 11,
     color: '#64748b',
@@ -1065,7 +1074,7 @@ const styles = StyleSheet.create({
   },
   refItem: {
     flex: 1,
-    minWidth: 260,
+    minWidth: 220,
     backgroundColor: '#f8fafc',
     borderRadius: 10,
     borderWidth: 1,

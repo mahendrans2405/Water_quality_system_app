@@ -308,9 +308,10 @@ export default function DashboardScreen() {
       >
         {/* Header Section with TOP-RIGHT LOGOUT BUTTON */}
         <View style={styles.header}>
-          <View style={styles.headerTop}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.platformTitle}>IoT Water Quality Monitoring</Text>
+          <View style={[styles.headerTop, isMobile && styles.headerTopMobile]}>
+            <View style={{ flex: isMobile ? undefined : 1 }}>
+              <Text style={styles.platformTitle}>Next-Gen Water Safety</Text>
+              <Text style={styles.ipdSubtitle}>IPD - 342</Text>
               <Text style={styles.userSubtitle}>
                 {user?.name} · <Text style={styles.roleTag}>{user?.role}</Text>
                 {user?.branch ? ` · 🌿 ${user.branch}` : ''}
@@ -943,6 +944,13 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#0f172a',
   },
+  ipdSubtitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#64748b',
+    letterSpacing: 1.5,
+    marginTop: 2,
+  },
   userSubtitle: {
     fontSize: 13,
     color: '#64748b',
@@ -1060,7 +1068,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   kpiCardHalf: {
-    width: '48%',
+    width: '47%',
+    minWidth: 130,
     flexGrow: 1,
   },
   kpiTotal: {
@@ -1591,6 +1600,11 @@ const styles = StyleSheet.create({
     width: '100%',
     minWidth: '100%',
     flex: undefined,
+  },
+  headerTopMobile: {
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: 10,
   },
   metaRowMobile: {
     flexDirection: 'column',

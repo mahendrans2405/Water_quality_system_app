@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Image,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -145,10 +146,13 @@ export default function LoginScreen() {
           <View style={styles.card}>
             {/* Brand Logo & Header */}
             <View style={styles.brandHeader}>
-              <View style={styles.logoBadge}>
-                <Text style={styles.logoIcon}>💧</Text>
-              </View>
-              <Text style={styles.brandTitle}>AQUAFLOW IOT</Text>
+              <Image
+                source={require('../assets/images/app-logo.png')}
+                style={styles.logoImage}
+                resizeMode="contain"
+              />
+              <Text style={styles.brandTitle}>Next-Gen Water Safety</Text>
+              <Text style={styles.ipdSubtitle}>IPD - 342</Text>
               <Text style={styles.brandSubtitle}>Water Quality Monitoring & Telemetry Platform</Text>
             </View>
 
@@ -302,33 +306,34 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 20,
   },
-  logoBadge: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: '#eff6ff',
-    borderWidth: 2,
-    borderColor: '#bfdbfe',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
-    shadowColor: '#2563eb',
-    shadowOpacity: 0.15,
+  logoImage: {
+    width: 80,
+    height: 80,
+    borderRadius: 20,
+    marginBottom: 14,
+    shadowColor: '#0284c7',
+    shadowOpacity: 0.25,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 4 },
-  },
-  logoIcon: {
-    fontSize: 28,
   },
   brandTitle: {
     fontSize: 22,
     fontWeight: '900',
     color: '#0f172a',
-    letterSpacing: 1.5,
+    letterSpacing: 1.2,
+    textAlign: 'center',
+  },
+  ipdSubtitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#64748b',
+    letterSpacing: 2,
+    marginTop: 4,
+    textAlign: 'center',
   },
   brandSubtitle: {
     fontSize: 12,
-    color: '#64748b',
+    color: '#94a3b8',
     fontWeight: '500',
     marginTop: 4,
     textAlign: 'center',

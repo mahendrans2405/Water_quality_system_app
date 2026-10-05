@@ -150,7 +150,7 @@ const styles = StyleSheet.create({
   },
   item: {
     flex: 1,
-    minWidth: 260,
+    minWidth: 220,
     backgroundColor: '#f8fafc',
     borderRadius: 10,
     borderWidth: 1,
