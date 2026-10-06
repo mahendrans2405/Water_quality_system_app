@@ -13,7 +13,8 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://water-quality-system-app.vercel.app"
+        "EXPO_PUBLIC_API_BASE_URL": "https://water-quality-system-app.vercel.app",
+        "GRADLE_OPTS": "-Dorg.gradle.jvmargs=-Xmx2560m -XX:MaxMetaspaceSize=512m -XX:+HeapDumpOnOutOfMemoryError"
       }
     },
     "production": {
@@ -21,7 +22,8 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://water-quality-system-app.vercel.app"
+        "EXPO_PUBLIC_API_BASE_URL": "https://water-quality-system-app.vercel.app",
+        "GRADLE_OPTS": "-Dorg.gradle.jvmargs=-Xmx2560m -XX:MaxMetaspaceSize=512m -XX:+HeapDumpOnOutOfMemoryError"
       }
     }
   },
